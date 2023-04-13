@@ -1,7 +1,7 @@
 ;*---------------------------------------------------------------------------
 ; Program:	readfromfile.asm
 ; Contents:	Input file routines for "RawDIC" (c) John Selck and Codetapper
-; Author:	Codetapper/JOTD/Wepl
+; Author:	Codetapper/JOTD/Wepl/Psygore
 ; History:	12.10.02 - v1.0 (Codetapper)
 ;		         - Supports ADF, MFMWarp and NOMADWarp files
 ;		         - Detects DMS, MOKWarp, PhilWarp and WWarp files
@@ -31,9 +31,10 @@
 ;			 - asl-lvo's removed
 ;			 - twInfo removed, tries twReadForm if allowed and twReadRaw afterwards
 ;			 - cleanup
-;
 ;		26.05.05 Wepl
 ;			 - RequestAFile reworked
+;		23.12.07 Psygore
+;			 - Copy RawBuffer to MFMBuffer (needed when SYNC_INDEX flag is used)
 ; Copyright:	Public Domain
 ; Language:	68000 Assembler
 ; Translator:	Barfly
@@ -54,15 +55,26 @@ InputFromFile	move.l	#BUFFER_EMPTY,xx_BufferType	;Mark the buffer as empty
 		move.l	xx_InputName(pc),d0		;If there is no filename to read from, don't bother doing anything
 		beq	.NoReadFromFile
 
-		bsr	GetAbsTrackNum			;Work out the actual track -> d0
-		move.l	xx_MFMBuffer(pc),a0
 		movem.l	d1-d7/a0-a6,-(sp)
+		bsr	GetAbsTrackNum			;Work out the actual track -> d0
+		move.l	xx_RawBuffer(pc),a0
 		bsr	ReadMFMTrack
-		movem.l	(sp)+,d1-d7/a0-a6
 
-		move.l	xx_RawBuffer(pc),xx_RawPointer
+		move.l	xx_RawBuffer(pc),a0
+		move.l	a0,xx_RawPointer
 		clr.l	xx_RawBit			;initialize bitpointer
 
+		move.l	xx_MFMBuffer(pc),a1		;copy to MFMBuffer
+		moveq	#15,d1
+		add.l	xx_RawLength(pc),d1
+		lsr.l	#4,d1
+		subq.l	#1,d1
+.l0		move.l	(a0)+,(a1)+
+		move.l	(a0)+,(a1)+
+		move.l	(a0)+,(a1)+
+		move.l	(a0)+,(a1)+
+		dbf	d1,.l0
+		movem.l	(sp)+,d1-d7/a0-a6
 		rts
 
 .NoReadFromFile	moveq	#IERR_OK,d0			;No error and buffer empty (read from disk)
@@ -123,7 +135,7 @@ ReadMFMTrack	move.l	d0,d4
 .raw		move.l	xx_ReadFromPtr(pc),d0	;Handle reading
 		move.l	d4,d1			;track number
 		move.l	#BUFFERLENGTH,d2
-		move.l	xx_RawBuffer(pc),a0
+		move.l	a4,a0			;buffer
 		move.l	twbase(pc),a6
 		jsr	(_LVOtwReadRaw,a6)
 		tst.l	d0

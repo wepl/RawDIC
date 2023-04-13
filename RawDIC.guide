@@ -1,9 +1,9 @@
 @database RawDIC
-$VER: RawDIC_Guide 4.4
-$Id: RawDIC.guide 1.14 2006/11/02 22:04:08 wepl Exp wepl $
+$VER: RawDIC_Guide 4.5
+$Id: RawDIC.guide 1.15 2007/12/23 21:30:06 wepl Exp wepl $
 @node main "RawDIC documentation (2.11.2006)"
 
-			   @{b}RawDIC V4.4@{ub}
+			   @{b}RawDIC V4.5@{ub}
 
 		      © 1999 by John Selck
 	  © 2002-2006 by Codetapper/Wepl/JOTD/Psygore
@@ -743,6 +743,9 @@ WWarp:		A disk imaging format written by Wepl which stores tracks
 
 @endnode
 @node history "History"
+
+4.5	Released on 23.12.2007
+	(Psygore) fixed for SYNC_INDEX and readfromfile
 
 4.4	Released on 2.11.2006
 	(Psygore) using fast memory for disk buffers where possible
