@@ -2,7 +2,7 @@
 ;  :Program.	RawDIC.asm
 ;  :Contents.	create diskimages using parameter file
 ;  :Author.	Graham, Codetapper, Wepl
-;  :Version	$Id: RawDIC.asm 1.16 2006/01/30 21:19:02 wepl Exp wepl $
+;  :Version	$Id: RawDIC.asm 1.17 2006/02/27 07:18:00 wepl Exp wepl $
 ;  :History.	xx.xx.xx initial work upto v1.7 done by Graham
 ;		xx.xx.xx enhancements for reading from file done by Codetapper
 ;		16.07.04 cleanup, repacking (Wepl)
@@ -21,6 +21,8 @@
 ;			 version bumped to 4.1
 ;		30.01.06 Wepl
 ;			 version bumped to 4.2
+;		14.02.06 Wepl
+;			 version bumped to 4.3
 ;  :Requires.	OS V37+, MC68000+
 ;  :Copyright.	?
 ;  :Language.	68000 Assembler
@@ -29,7 +31,7 @@
 ;---------------------------------------------------------------------------*
 
 Version		= 4
-Revision	= 2
+Revision	= 3
 
 	; the IMSG tags are used to define certain signals in the program
 	; i.e. a pressed button or a failure while reading a track
@@ -100,7 +102,7 @@ DFLG_DOUBLEINC2	equ	DFLG_DOUBLEINC&(~DFLG_NORESTRICTIONS)
 		dc.b	"] "
 		INCBIN	"T:date"
 		dc.b	0
-		dc.b	"$Id: RawDIC.asm 1.16 2006/01/30 21:19:02 wepl Exp wepl $",0
+		dc.b	"$Id: RawDIC.asm 1.17 2006/02/27 07:18:00 wepl Exp wepl $",0
 	EVEN
 
 main:

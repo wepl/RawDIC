@@ -1,13 +1,16 @@
 ;*---------------------------------------------------------------------------
 ; Program:	slave.asm
-; Contents:	
-; History:	
+; Contents:
+; History:
 ;		20.08.04 Wepl
 ;			 debug output also if no disk matches
 ;		23.01.05 Wepl - disk name creation fixed
 ;		31.05.05 Wepl - _BitShiftMFM fixed
 ;		30.01.06 Psygore - _AppendFile creates a new file by calling
 ;			 _WriteFile if the file does not exist before
+;		14.02.06 Psygore - _AppendFile fixed
+;			 Wepl - _WriteFile, _AppendFile rewritten for correct
+;				error checking
 ; Copyright:	Public Domain
 ; Language:	68000 Assembler
 ; Translator:	Barfly
@@ -572,73 +575,90 @@ _DIname:	dc.b	"Disk."
 _DInum:		dc.b	0,0,0
 		cnop	0,2
 
-_WriteFile:	; stores a file into the given path
+_IoErr		jsr	(_LVOIoErr,a6)
+		move.w	d0,(xx_LastIoErr)
+		rts
 
-		; A0=filename
+
+_WriteFile:	; A0=filename
 		; A1=memory adress
 		; D0.l=length
 		; => D0.l=errorcode
 
-		movem.l	d1-d7/a0-a6,-(sp)
-		move.l	dosbase(pc),a6
-		move.l	a1,-(sp)
-		move.l	d0,-(sp)
-		move.l	a0,d1
-		move.l	#MODE_NEWFILE,d2
-		jsr	_LVOOpen(a6)
-		move.l	(sp)+,d3
-		move.l	(sp)+,d2
-		move.l	d0,d1
-		beq.b	.error
-		move.l	d1,-(sp)
-		jsr	_LVOWrite(a6)
-		move.l	(sp)+,d1
-		jsr	_LVOClose(a6)
-		movem.l	(sp)+,d1-d7/a0-a6
+		movem.l	d1-d5/a0-a1/a6,-(a7)
+		move.l	a1,d4			;D4 = buffer
+		move.l	d0,d3			;D3 = length
+		move.l	(dosbase,pc),a6		;A6 = dosbase
+		move.l	a0,d1			;name
+		move.l	#MODE_NEWFILE,d2	;mode
+		jsr	(_LVOOpen,a6)
+		move.l	d0,d5			;D5 = fh
+		beq	.openerr
+		move.l	d5,d1			;fh
+		move.l	d4,d2			;buffer
+		jsr	(_LVOWrite,a6)
+		cmp.l	d0,d3
+		bne	.writeerr
+		move.l	d5,d1			;fh
+		jsr	(_LVOClose,a6)
+		movem.l	(sp)+,_MOVEMREGS
 		moveq	#IERR_OK,d0
 		rts
-.error
-		jsr	_LVOIoErr(a6)
-		move.w	d0,xx_LastIoErr
-		movem.l	(sp)+,d1-d7/a0-a6
+
+.writeerr	bsr	_IoErr
+		move.l	d5,d1			;fh
+		jsr	(_LVOClose,a6)
+.err		movem.l	(sp)+,_MOVEMREGS
 		moveq	#IERR_NOWFILE,d0
 		rts
 
-_AppendFile:	; stores a file into the given path
+.openerr	bsr	_IoErr
+		bra	.err
 
-		; A0=filename
+
+_AppendFile:	; A0=filename
 		; A1=memory adress
 		; D0.l=length
 		; => D0.l=errorcode
 
-		movem.l	d1-d7/a0-a6,-(sp)
-		move.l	dosbase(pc),a6
-		move.l	a1,-(sp)
-		move.l	d0,-(sp)
-		move.l	a0,d1
-		move.l	#MODE_OLDFILE,d2
-		jsr	_LVOOpen(a6)
-		move.l	(sp)+,d3
-		move.l	(sp)+,d2
-		move.l	d0,d1
-		beq.b	.newfile
-		movem.l	d1-d3,-(sp)
-		moveq	#0,d2
-		moveq	#OFFSET_END,d3
+		movem.l	d1-d6/a0-a1/a6,-(a7)
+		move.l	a1,d4			;D4 = buffer
+		move.l	d0,d6			;D6 = length
+		move.l	(dosbase,pc),a6		;A6 = dosbase
+		move.l	a0,d1			;name
+		move.l	#MODE_READWRITE,d2	;mode
+		jsr	(_LVOOpen,a6)
+		move.l	d0,d5			;D5 = fh
+		beq	.openerr
+		move.l	d5,d1			;fh
+		moveq	#0,d2			;position
+		moveq	#OFFSET_END,d3		;mode
 		jsr	_LVOSeek(a6)
-		movem.l	(sp)+,d1-d3
-		cmp.l	#-1,d0
-		beq.b	.xx
-		move.l	d1,-(sp)
-		jsr	_LVOWrite(a6)
-		move.l	(sp)+,d1
-.xx		jsr	_LVOClose(a6)
-		movem.l	(sp)+,d1-d7/a0-a6
+		cmp.l	#-1,d0			;buggy on v36/37
+		beq	.seekerr
+		move.l	d5,d1			;fh
+		move.l	d4,d2			;buffer
+		move.l	d6,d3			;length
+		jsr	(_LVOWrite,a6)
+		cmp.l	d0,d3
+		bne	.writeerr
+		move.l	d5,d1			;fh
+		jsr	(_LVOClose,a6)
+		movem.l	(sp)+,_MOVEMREGS
 		moveq	#IERR_OK,d0
 		rts
-.newfile
-		movem.l	(sp)+,d1-d7/a0-a6
-		bra	_WriteFile
+
+.writeerr	bsr	_IoErr
+		move.l	d5,d1			;fh
+		jsr	(_LVOClose,a6)
+.err		movem.l	(sp)+,_MOVEMREGS
+		moveq	#IERR_NOWFILE,d0
+		rts
+
+.seekerr
+.openerr	bsr	_IoErr
+		bra	.err
+
 
 _CheckFileFitDisk:	; tests parameters if they stay inside the diskimage
 
@@ -1044,4 +1064,3 @@ _TestCRC:	; compares the CRC values of the CRClist with the tracks.
 		movem.l	(sp)+,d1-d7/a0-a6
 		moveq	#IERR_CRCFAIL,d0
 		rts
-

@@ -1,9 +1,9 @@
 @database RawDIC
-$VER: RawDIC_Guide 4.2
-$Id: RawDIC.guide 1.12 2006/01/30 19:03:17 wepl Exp wepl $
+$VER: RawDIC_Guide 4.3
+$Id: RawDIC.guide 1.13 2006/02/27 07:18:00 wepl Exp wepl $
 @node main "RawDIC documentation (30.1.2006)"
 
-			   @{b}RawDIC V4.2@{ub}
+			   @{b}RawDIC V4.3@{ub}
 
 		      © 1999 by John Selck
 	  © 2002-2006 by Codetapper/Wepl/JOTD/Psygore
@@ -743,6 +743,10 @@ WWarp:		A disk imaging format written by Wepl which stores tracks
 
 @endnode
 @node history "History"
+
+4.3	Release on 14.02.2006
+	(Psygore) bugfix for _AppendFile
+	(Wepl) rewritten functions _WriteFile, _AppendFile for better error handling
 
 4.2	Released on 30.1.2006
 	(Wepl) single tracks from trackwarp.library should work correctly now

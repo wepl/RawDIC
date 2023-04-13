@@ -1638,7 +1638,7 @@ txt2_noport:	dc.b	"Could not open Message Port!",10,0
 txt2_nodev:	dc.b	"Could not open trackdisk.device!",10,0
 rawdicInfo:	sprintx	"RawDIC V%ld.%ld ",Version,Revision
 		INCBIN	"T:date"
-		dc.b	" ©1999 by John Selck, ©2002-2005 by Codetapper/Wepl/JOTD",10,0
+		dc.b	" ©1999 by John Selck, ©2002-2006 by Codetapper/Wepl/JOTD/Psygore",10,0
 _template	dc.b	"Slave,Retries/K/N,Source/K,Input/K,IgnoreErrors/S,Debug/S",0
 		cnop	0,2
 
