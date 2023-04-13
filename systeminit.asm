@@ -19,6 +19,11 @@
 ;		17.01.05 Wepl
 ;			 variable disk names added
 ;			 cleanup for txt1
+;		xx.04.05 JOTD
+;			 added support for trackwarp.library
+;                        removed useless XPK & MFM error messages
+;                        drive seek skipped if there is an input file
+;
 ; Copyright:	Public Domain
 ; Language:	68000 Assembler
 ; Translator:	Barfly
@@ -49,21 +54,20 @@ Start:
 		moveq	#0,d0
 		lea	gfxname(pc),a1
 		jsr	_LVOOpenLibrary(a6)
-		tst.l	d0
-		beq.b	.nogfx
 		lea	gfxbase(pc),a1
 		move.l	d0,(a1)
+		beq.b	.nogfx
 
-		moveq	#0,d0			; Codetapper
-		lea	reqname(pc),a1
+		moveq	#0,d0			; JOTD
+		lea	aslname(pc),a1
 		jsr	_LVOOpenLibrary(a6)
-		lea	reqbase(pc),a1
+		lea	aslbase(pc),a1
 		move.l	d0,(a1)
 
-		moveq	#0,d0			; Codetapper
-		lea	xpkname(pc),a1
+		moveq	#0,d0			; JOTD
+		lea	twname(pc),a1
 		jsr	_LVOOpenLibrary(a6)
-		lea	xpkbase(pc),a1
+		lea	twbase(pc),a1
 		move.l	d0,(a1)
 
 	;read arguments
@@ -101,11 +105,11 @@ Start:
 		jsr	(_LVOFreeArgs,a6)
 
 		move.l	4.w,a6
-		move.l	xpkbase(pc),d0
-		beq	.closereq
+		move.l	twbase(pc),d0
+		beq	.closeasl
 		move.l	d0,a1
 		jsr	_LVOCloseLibrary(a6)
-.closereq	move.l	reqbase(pc),d0
+.closeasl	move.l	aslbase(pc),d0
 		beq	.closegfx
 		move.l	d0,a1
 		jsr	_LVOCloseLibrary(a6)
@@ -299,43 +303,43 @@ OpenMainWindow:
 		moveq	#4,d0
 		moveq	#4,d1
 		bsr	NewButton
-		move.l	a0,Button0
+		move.l	a0,ButtonStart
 
 		move.l	winptr(pc),a0
 		lea	String1(pc),a1
 		moveq	#4,d0
 		moveq	#4,d1
 		bsr	NewButton
-		move.l	a0,Button1
+		move.l	a0,ButtonStop
 
 		move.l	winptr(pc),a0		;Select File button added by Codetapper
 		lea	String2(pc),a1
 		moveq	#4,d0
 		moveq	#4,d1
 		bsr	NewButton
-		move.l	a0,Button2
+		move.l	a0,ButtonSelectFile
 
-		move.l	Button1(pc),a0
+		move.l	ButtonStop(pc),a0
 		move.w	wininnerxsize(pc),d0
 		subq.w	#4,d0	; 4 pixels distance right
 		sub.w	bt_gg_OFFS+gg_Width(a0),d0
 		move.w	d0,bt_gg_OFFS+gg_LeftEdge(a0)
 
-		move.l	Button1(pc),a0
+		move.l	ButtonStop(pc),a0
 		bsr	OffButton
 
-		move.l	Button2(pc),a0		; Center the Select button
+		move.l	ButtonSelectFile(pc),a0		; Center the Select button
 		move.w	wininnerxsize(pc),d0	; Added by Codetapper
 		sub.w	bt_gg_OFFS+gg_Width(a0),d0
 		asr.w	#1,d0
 		move.w	d0,bt_gg_OFFS+gg_LeftEdge(a0)
 
-		move.l	reqbase(pc),d0		;If reqtools or XPK are not found
+		move.l	aslbase(pc),d0		;If asl or twarplib not found
 		beq	.noselect		;disable the Select button
-		move.l	xpkbase(pc),d0
+		move.l	twbase(pc),d0
 		bne	.selectok
 
-.noselect	move.l	Button2(pc),a0
+.noselect	move.l	ButtonSelectFile(pc),a0
 		bsr	OffButton
 
 .selectok
@@ -372,12 +376,12 @@ OpenMainWindow:
 		move.l	PrBar1(pc),a0
 		add.w	prb_TopEdge(a0),d1
 		add.w	prb_Height(a0),d1
-		move.l	Button0(pc),a0
+		move.l	ButtonStart(pc),a0
 		move.w	d1,bt_gg_OFFS+gg_TopEdge(a0)
-		move.l	Button1(pc),a0
+		move.l	ButtonStop(pc),a0
 		move.w	d1,bt_gg_OFFS+gg_TopEdge(a0)
 
-		move.l	Button2(pc),a0		; Added by Codetapper
+		move.l	ButtonSelectFile(pc),a0		; Added by Codetapper
 		move.w	d1,bt_gg_OFFS+gg_TopEdge(a0)
 
 	; resize window
@@ -390,7 +394,7 @@ OpenMainWindow:
 		add.b	sc_WBorBottom(a1),d1
 		;add.b	sc_BarHBorder(a1),d1
 
-		move.l	Button1(pc),a0
+		move.l	ButtonStop(pc),a0
 		add.w	bt_gg_OFFS+gg_TopEdge(a0),d1
 		add.w	bt_gg_OFFS+gg_Height(a0),d1
 
@@ -435,19 +439,19 @@ OpenMainWindow:
 		move.l	intbase(pc),a6
 
 		move.l	winptr(pc),a0
-		move.l	Button0(pc),a1
+		move.l	ButtonStart(pc),a1
 		lea	bt_gg_OFFS(a1),a1
 		moveq	#-1,d0
 		jsr	_LVOAddGadget(a6)
 
 		move.l	winptr(pc),a0
-		move.l	Button1(pc),a1
+		move.l	ButtonStop(pc),a1
 		lea	bt_gg_OFFS(a1),a1
 		moveq	#-1,d0
 		jsr	_LVOAddGadget(a6)
 
 		move.l	winptr(pc),a0		;Added by Codetapper
-		move.l	Button2(pc),a1
+		move.l	ButtonSelectFile(pc),a1
 		lea	bt_gg_OFFS(a1),a1
 		moveq	#-1,d0
 		jsr	_LVOAddGadget(a6)
@@ -455,7 +459,7 @@ OpenMainWindow:
 	; draw everything
 
 		move.l	winptr(pc),a1
-		move.l	Button0(pc),a0
+		move.l	ButtonStart(pc),a0
 		sub.l	a2,a2
 		jsr	_LVORefreshGadgets(a6)
 
@@ -554,14 +558,14 @@ CloseMainWindow:
 		move.l	PrBar1(pc),a0
 		bsr	RemProgressBar
 		move.l	winptr(pc),a0
-		move.l	Button0(pc),a1
+		move.l	ButtonStart(pc),a1
 		bsr	RemButton
 		move.l	winptr(pc),a0
-		move.l	Button1(pc),a1
+		move.l	ButtonStop(pc),a1
 		bsr	RemButton
 
 		move.l	winptr(pc),a0		; Added by Codetapper
-		move.l	Button2(pc),a1
+		move.l	ButtonSelectFile(pc),a1
 		bsr	RemButton
 
 		move.l	textfontrp(pc),a1
@@ -609,9 +613,9 @@ CloseSlave:
 winptr:		dc.l	0
 WinRastPort:	dc.l	0
 wininnerxsize:	dc.w	0
-Button0:	dc.l	0
-Button1:	dc.l	0
-Button2:	dc.l	0		; Select File button added by Codetapper
+ButtonStart:	dc.l	0
+ButtonStop:	dc.l	0
+ButtonSelectFile:	dc.l	0		; Select File button added by Codetapper
 PrBar0:		dc.l	0
 PrBar1:		dc.l	0
 TextDisplay0:	dc.l	0
@@ -620,8 +624,8 @@ TextDisplay1:	dc.l	0
 dosbase:	dc.l	0		; dos.library
 intbase:	dc.l	0		; intuition.library
 gfxbase:	dc.l	0		; graphics.library
-reqbase:	dc.l	0		; reqtools.library
-xpkbase:	dc.l	0		; xpkmaster.library
+aslbase:	dc.l	0		; asl.library
+twbase:		dc.l	0		; trackwarp.library
 trackbase:	dc.l	0		; trackdisk.device
 textfontrp:	dc.l	0		; TextFont of default font
 slaveseg:	dc.l	0		; slave
@@ -634,8 +638,8 @@ TextAttrRP:	ds.b	ta_SIZEOF	; TextAttr structure of font
 dosname:	dc.b	"dos.library",0
 intname:	dc.b	"intuition.library",0
 gfxname:	dc.b	"graphics.library",0
-reqname:	dc.b	"reqtools.library",0
-xpkname:	dc.b	"xpkmaster.library",0
+aslname:	AslName
+twname:		dc.b	"trackwarp.library",0
 trackdiskname:	dc.b	"trackdisk.device",0
 		cnop	0,8
 windowstruct:
@@ -780,46 +784,39 @@ Txt1_CLR:
 		movem.l	(sp)+,a0-a1
 		rts
 
-TXT1BUFFERLEN	= 64
-Txt1Buffer:	ds.b	TXT1BUFFERLEN	; empty buffer for textdisplay
-Txt1_NF:	dc.b	"Illegal RawDIC function call!",0
-Txt1_NC:	dc.b	"Unknown disk version!",0
-Txt1_TLT:	dc.b	"Track %d not in TrackList!",0
-Txt1_TLI:	dc.b	"TrackList invalid!",0
-Txt1_OOM:	dc.b	"Out of memory!",0
-Txt1_ND:	dc.b	"No disk in drive!",0
-Txt1_OD:	dc.b	"File exceeds diskimage!",0
-Txt1_UDV:	dc.b	"Unknown disk structure version!",0
-Txt1_UV:	dc.b	"Unknown slave version!",0
-Txt1_UF:	dc.b	"Undefined flags set!",0
-Txt1_IS:	dc.b	"Invalid slave!",0
-Txt1_InsDskNum	dc.b	"Insert disk %d and press Start.",0
-Txt1_InsDskTxt	dc.b	"Insert disk '%s' and press Start.",0
-Txt1_RT:	dc.b	"Reading track %d.",0
-Txt1_CE:	dc.b	"Checksum error on track %d",0
-Txt1_SE:	dc.b	"No sync signal on track %d",0
-Txt1_SM:	dc.b	"Sector missing on track %d",0
-Txt1_C:		dc.b	"Cancelled!",0
-Txt1_F:		dc.b	"Finished.",0
-Txt1_INP_OPEN:	dc.b	"Input file would not open",0
-Txt1_INP_SEEK:	dc.b	"Input file seek error",0
-Txt1_INP_READ:	dc.b	"Input file read error",0
-Txt1_INP_NOTRK:	dc.b	"Input file does not contain track %d",0
-Txt1_INP_BADHD:	dc.b	"Input file has a bad header",0
-Txt1_XPK_DEPACK: dc.b	"MFMWarp XPK depack error",0
-Txt1_MC1_DEPACK: dc.b	"MFMWarp MC1 depack error",0
-Txt1_DIP_DEPACK: dc.b	"MFMWarp DIP depack error",0
-Txt1_MFM_CSUM:	dc.b	"MFMWarp checksum error",0
-Txt1_INP_ILLEN:	dc.b	"Input file illegal length",0
-Txt1_FORMAT_UNS: dc.b	"Input file format is unsupported",0
-Txt1_INP_INCOMP: dc.b	"Input file format is incompatible with decoder",0
-Txt1_NMD_DEPACK: dc.b	"NOMADWarp depack error",0
-Txt1_WWP_UNS:	dc.b	"WWarp file format v2+ is unsupported",0
-Txt1_TABL_DATA:	dc.b	"WWarp table data error",0
-Txt1_TABL_UNS:	dc.b	"WWarp table header version unsupported",0
-Txt1_TRCK_UNS:	dc.b	"WWarp track header version unsupported",0
-Txt1_TRCK_TYPE:	dc.b	"WWarp track type unsupported",0
-Txt1_TRCK_FLAG:	dc.b	"WWarp track flags unsupported",0
+TXT1BUFFERLEN	= 100
+Txt1Buffer:		ds.b	TXT1BUFFERLEN	; empty buffer for textdisplay
+Txt1_Working:		dc.b	"Working...",0
+Txt1_NOWFILE:		dc.b	"Unable to write file: IoErr %d",0
+Txt1_UEC:		dc.b	"Unknown error code: %d",0
+Txt1_UECT:		dc.b	"Unknown error on track %d",0
+Txt1_NOFUNCTION:	dc.b	"Illegal RawDIC function call!",0
+Txt1_CRCFAIL:		dc.b	"Unknown disk version!",0
+Txt1_NOTRACK:		dc.b	"Track %d not in TrackList!",0
+Txt1_TRACKLIST:		dc.b	"TrackList invalid!",0
+Txt1_OUTOFMEM:		dc.b	"Out of memory!",0
+Txt1_NODISK:		dc.b	"No disk in drive!",0
+Txt1_DISKRANGE:		dc.b	"File exceeds diskimage!",0
+Txt1_DSKVERSION:	dc.b	"Unknown disk structure version!",0
+Txt1_VERSION:		dc.b	"Unknown slave version!",0
+Txt1_FLAGS:		dc.b	"Undefined flags set!",0
+Txt1_IS:		dc.b	"Invalid slave!",0
+Txt1_InsDskNum		dc.b	"Insert disk %d and press Start.",0
+Txt1_InsDskTxt		dc.b	"Insert disk '%s' and press Start.",0
+Txt1_RT:		dc.b	"Reading track %d.",0
+Txt1_CHECKSUM:		dc.b	"Checksum error on track %d",0
+Txt1_NOSYNC:		dc.b	"No sync signal on track %d",0
+Txt1_NOSECTOR:		dc.b	"Sector missing on track %d",0
+Txt1_C:			dc.b	"Cancelled!",0
+Txt1_F:			dc.b	"Finished.",0
+Txt1_INP_OPEN:		dc.b	"Input file would not open",0
+Txt1_INP_SEEK:		dc.b	"Input file seek error",0
+Txt1_INP_READ:		dc.b	"Input file read error",0
+Txt1_INP_NOTRK:		dc.b	"Input file does not contain track %d",0
+Txt1_INP_BADHD:		dc.b	"Input file has a bad header",0
+Txt1_INP_ILLEN:		dc.b	"Input file illegal length",0
+Txt1_FORMAT_UNS: 	dc.b	"Input file format is unsupported",0
+Txt1_INP_INCOMP: 	dc.b	"Input file format is incompatible with decoder",0
 		cnop	0,2
 
  STRUCTURE Button,0
@@ -1329,7 +1326,7 @@ DriveMotorOn:
 		lea	IORequest(pc),a1
 		move.w	#TD_MOTOR,IO_COMMAND(a1)
 		move.l	#1,IO_LENGTH(a1)
-		jsr	_LVODoIO(a6)
+		jsr	_LVODoIO(a6)	; motor on
 .MotorOnDone	movem.l	(sp)+,d0-d7/a0-a6
 		rts
 
@@ -1344,7 +1341,7 @@ DriveMotorOff:
 		lea	IORequest(pc),a1
 		move.w	#TD_MOTOR,IO_COMMAND(a1)
 		move.l	#0,IO_LENGTH(a1)
-		jsr	_LVODoIO(a6)
+		jsr	_LVODoIO(a6)	; motor off
 .MotorOffDone	movem.l	(sp)+,d0-d7/a0-a6
 		rts
 
@@ -1391,7 +1388,7 @@ DriveRawRead:
 
 		move.l	a5,a1
 		move.w	#TD_CHANGESTATE,IO_COMMAND(a1)
-		jsr	_LVODoIO(a6)
+		jsr	_LVODoIO(a6)	; disk present?
 		tst.l	IO_ACTUAL(a5)
 		bne.b	.nodisk
 		
@@ -1406,7 +1403,7 @@ DriveRawRead:
 		move.w	#TD_RAWREAD,IO_COMMAND(a1)
 		move.b	#0,IO_FLAGS(a1)
 		clr.b	IO_ERROR(a1)
-		jsr	_LVODoIO(a6)
+		jsr	_LVODoIO(a6)	; read raw
 
 		move.l	a5,a1
 		bsr	_tddisable81
@@ -1459,7 +1456,7 @@ DriveRead:
 		lea	IORequest(pc),a1
 		move.w	#TD_CHANGESTATE,IO_COMMAND(a1)
 		move.w	d0,-(sp)
-		jsr	_LVODoIO(a6)
+		jsr	_LVODoIO(a6)	; disk present?
 		moveq	#0,d0
 		move.w	(sp)+,d0
 		lea	IORequest(pc),a1
@@ -1473,7 +1470,7 @@ DriveRead:
 		move.l	d0,IO_OFFSET(a1)
 		move.w	#CMD_READ,IO_COMMAND(a1)
 		clr.b	IO_ERROR(a1)
-		jsr	_LVODoIO(a6)
+		jsr	_LVODoIO(a6)	; read std track
 		lea	IORequest(pc),a1
 		move.b	IO_ERROR(a1),d0
 		bne.b	.parse
@@ -1538,17 +1535,33 @@ DriveRead:
 		tst.l	d0
 		rts
 ResetDrive:
-		movem.l	d0-d7/a0-a6,-(sp)
+		movem.l	d1-d7/a0-a6,-(sp)
+		
+		tst.l	xx_InputName		;JOTD added this!
+						;If there is an input file
+		bne	.skip			;don't reset the drive
 
 		lea	IORequest(pc),a1
+		move.w	#TD_CHANGESTATE,IO_COMMAND(a1)
+		move.l	4.w,a6
+		jsr	_LVODoIO(a6)	; disk present?
+		lea	IORequest(pc),a1
+		tst.l	IO_ACTUAL(a1)
+		bne.b	.nodisk
+
 		move.w	#TD_SEEK,IO_COMMAND(a1)
 		clr.l	IO_OFFSET(a1)
 		clr.b	IO_ERROR(a1)
-		move.l	4.w,a6
-		jsr	_LVODoIO(a6)
+		jsr	_LVODoIO(a6)	; seek
 
-		movem.l	(sp)+,d0-d7/a0-a6
+.skip
+		move.l	#IERR_OK,d0
+.rts
+		movem.l	(sp)+,d1-d7/a0-a6
 		rts
+.nodisk
+		move.l	#IERR_NODISK,d0
+		bra.b	.rts
 
 ParseSource:
 		lea	xx_Unit(pc),a1
@@ -1606,9 +1619,12 @@ txt2_noport:	dc.b	"Could not open Message Port!",10,0
 txt2_nodev:	dc.b	"Could not open trackdisk.device!",10,0
 rawdicInfo:	sprintx	"RawDIC V%ld.%ld ",Version,Revision
 		INCBIN	"T:date"
-		dc.b	" ©1999 by John Selck, ©2002-2005 by Codetapper/Wepl",10,0
+		dc.b	" ©1999 by John Selck, ©2002-2005 by Codetapper/Wepl/JOTD",10,0
 _template	dc.b	"Slave,Retries/K/N,Source/K,Input/K,IgnoreErrors/S,Debug/S",0
 		cnop	0,2
+
+; < a0: text
+
 WriteStdOut:
 		move.l	a6,-(a7)
 		move.l	a0,d1
@@ -1617,92 +1633,52 @@ WriteStdOut:
 		move.l	(a7)+,a6
 		rts
 
+; JOTD: activate it for traces within code
+	IFEQ	1
+DEBUG_MESSAGE:MACRO
+	movem.l	d0-d1/a0-a1,-(a7)
+	lea	.msg\@(pc),a0
+	bsr	WriteStdOut
+	movem.l	(a7)+,d0-d1/a0-a1
+	bra.b	.sk\@
+.msg\@
+	dc.b	"\1",10,0
+	even
+.sk\@
+	ENDM
+	ELSE
+DEBUG_MESSAGE:MACRO
+	ENDM
+	ENDC
+
+CODE2MSG:MACRO
+	cmp.b	#IERR_\1,d0
+	bne.b	.n\@
+	lea	Txt1_\1(pc),a0
+	bra	.do
+.n\@
+	ENDM
+
 ParseErrorRequest:
 		move.l	a0,-(sp)
-		cmp.b	#IERR_CHECKSUM,d0
-		bne.b	.n0
-		lea	Txt1_CE(pc),a0
-		bra	.do
-.n0		cmp.b	#IERR_NOSYNC,d0
-		bne.b	.n1
-		lea	Txt1_SE(pc),a0
-		bra	.do
-.n1		cmp.b	#IERR_NOSECTOR,d0
-		bne.b	.n2
-		lea	Txt1_SM(pc),a0
-		bra	.do
-.n2		cmp.b	#IERR_INP_OPEN,d0
-		bne.b	.n3
-		lea	Txt1_INP_OPEN(pc),a0
-		bra	.do
-.n3		cmp.b	#IERR_INP_SEEK,d0
-		bne.b	.n4
-		lea	Txt1_INP_SEEK(pc),a0
-		bra	.do
-.n4		cmp.b	#IERR_INP_READ,d0
-		bne.b	.n5
-		lea	Txt1_INP_READ(pc),a0
-		bra	.do
-.n5		cmp.b	#IERR_INP_NOTRK,d0
-		bne.b	.n6
-		lea	Txt1_INP_NOTRK(pc),a0
-		bra	.do
-.n6		cmp.b	#IERR_INP_BADHD,d0
-		bne.b	.n7
-		lea	Txt1_INP_BADHD(pc),a0
-		bra	.do
-.n7		cmp.b	#IERR_XPK_DEPACK,d0
-		bne.b	.n8
-		lea	Txt1_XPK_DEPACK(pc),a0
-		bra	.do
-.n8		cmp.b	#IERR_MC1_DEPACK,d0
-		bne.b	.n9
-		lea	Txt1_MC1_DEPACK(pc),a0
-		bra	.do
-.n9		cmp.b	#IERR_DIP_DEPACK,d0
-		bne.b	.n10
-		lea	Txt1_DIP_DEPACK(pc),a0
-		bra	.do
-.n10		cmp.b	#IERR_MFM_CSUM,d0
-		bne.b	.n11
-		lea	Txt1_MFM_CSUM(pc),a0
-		bra	.do
-.n11		cmp.b	#IERR_INP_ILLEN,d0
-		bne.b	.n12
-		lea	Txt1_INP_ILLEN(pc),a0
-		bra	.do
-.n12		cmp.b	#IERR_FORMAT_UNS,d0
-		bne.b	.n13
-		lea	Txt1_FORMAT_UNS(pc),a0
-		bra	.do
-.n13		cmp.b	#IERR_INP_INCOMP,d0
-		bne.b	.n14
-		lea	Txt1_INP_INCOMP(pc),a0
-		bra	.do
-.n14		cmp.b	#IERR_WWP_UNS,d0
-		bne.b	.n15
-		lea	Txt1_WWP_UNS(pc),a0
-		bra	.do
-.n15		cmp.b	#IERR_TABL_DATA,d0
-		bne.b	.n16
-		lea	Txt1_TABL_DATA(pc),a0
-		bra	.do
-.n16		cmp.b	#IERR_TABL_UNS,d0
-		bne.b	.n17
-		lea	Txt1_TABL_UNS(pc),a0
-		bra	.do
-.n17		cmp.b	#IERR_TRCK_UNS,d0
-		bne.b	.n18
-		lea	Txt1_TRCK_UNS(pc),a0
-		bra	.do
-.n18		cmp.b	#IERR_TRCK_TYPE,d0
-		bne.b	.n19
-		lea	Txt1_TRCK_TYPE(pc),a0
-		bra	.do
-.n19		cmp.b	#IERR_TRCK_FLAG,d0
-		bne.b	.s0
-		lea	Txt1_TRCK_FLAG(pc),a0
-;		bra	.do
+		tst.l	d0
+		bpl	.s0		; no error
+
+		CODE2MSG	CHECKSUM
+		CODE2MSG	NOSYNC
+		CODE2MSG	NOSECTOR
+		CODE2MSG	FORMAT_UNS
+		CODE2MSG	TWLIB
+		CODE2MSG	NODISK	; only happens if disk is removed during read
+		CODE2MSG	INP_OPEN
+		CODE2MSG	INP_SEEK
+		CODE2MSG	INP_READ
+		CODE2MSG	INP_NOTRK
+		CODE2MSG	INP_BADHD
+		CODE2MSG	INP_INCOMP
+
+		lea	Txt1_UECT(pc),a0
+
 .do		bsr.b	ErrorRequest
 .s0		move.l	(sp)+,a0
 		rts

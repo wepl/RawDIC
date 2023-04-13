@@ -19,8 +19,12 @@ rawdic_Library:
 		bra.w	lib_SaveFile
 		bra.w	lib_SaveDiskFile ; may not be called while dsk_InitCode or tle_Decoder
 		bra.w	lib_AppendFile
-		bra.w	lib_Reserved
+		bra.w	lib_AppendDiskFile
 		bra.w	lib_DMFM_STANDARD
+		bra.w	lib_Reserved	; future use?
+		bra.w	lib_Reserved
+		bra.w	lib_Reserved
+		bra.w	lib_Reserved
 	BOPT OD6+			;enable branch optimizing
 
 lib_ReadTrack:
@@ -49,6 +53,16 @@ lib_SaveDiskFile:
 		beq.b	lib_AbsErrorFunc
 		move.l	(sp)+,d0
 		bsr	_SaveDiskFile
+		bra.b	lib_ErrorHandler
+lib_AppendDiskFile:
+		move.l	d0,-(sp)
+		move.w	xx_ExternalCall(pc),d0
+		cmp.w	#CALL_INIT,d0
+		beq.b	lib_AbsErrorFunc
+		cmp.w	#CALL_DECODER,d0
+		beq.b	lib_AbsErrorFunc
+		move.l	(sp)+,d0
+		bsr	_AppendDiskFile
 		bra.b	lib_ErrorHandler
 lib_AppendFile:
 		bsr	_AppendFile
@@ -532,7 +546,6 @@ _SaveDiskImage:	; stores a diskimage from memory to hd
 		move.l	xx_DiskImage(pc),a1
 		move.l	a1,d1
 		beq.b	.error
-		moveq	#IERR_NOWFILE,d0
 		move.l	xx_DiskLen(pc),d0
 		bsr.b	_WriteFile
 .error		movem.l	(sp)+,d1-d7/a0-a6
@@ -581,7 +594,10 @@ _WriteFile:	; stores a file into the given path
 		movem.l	(sp)+,d1-d7/a0-a6
 		moveq	#IERR_OK,d0
 		rts
-.error		movem.l	(sp)+,d1-d7/a0-a6
+.error
+		jsr	_LVOIoErr(a6)
+		move.w	d0,xx_LastIoErr
+		movem.l	(sp)+,d1-d7/a0-a6
 		moveq	#IERR_NOWFILE,d0
 		rts
 
@@ -592,7 +608,7 @@ _AppendFile:	; stores a file into the given path
 		; D0.l=length
 		; => D0.l=errorcode
 
-		movem.l	d0-d7/a0-a6,-(sp)
+		movem.l	d1-d7/a0-a6,-(sp)
 		move.l	dosbase(pc),a6
 		move.l	a1,-(sp)
 		move.l	d0,-(sp)
@@ -614,11 +630,15 @@ _AppendFile:	; stores a file into the given path
 		jsr	_LVOWrite(a6)
 		move.l	(sp)+,d1
 .xx		jsr	_LVOClose(a6)
-		movem.l	(sp)+,d0-d7/a0-a6
+		movem.l	(sp)+,d1-d7/a0-a6
 		moveq	#IERR_OK,d0
 		rts
-.error		movem.l	(sp)+,d0-d7/a0-a6
-		bra	_WriteFile
+.error
+		jsr	_LVOIoErr(a6)
+		move.w	d0,xx_LastIoErr
+		movem.l	(sp)+,d1-d7/a0-a6
+		moveq	#IERR_NOWFILE,d0
+		rts
 
 _CheckFileFitDisk:	; tests parameters if they stay inside the diskimage
 
@@ -655,6 +675,23 @@ _SaveDiskFile:
 		add.l	xx_DiskImage(pc),a1
 		move.l	d1,d0
 		bsr	_WriteFile
+.end		movem.l	(sp)+,d1/a0-a1
+		tst.l	d0
+		rts
+
+_AppendDiskFile:
+		; A0=Filename
+		; D0.l=Offset
+		; D1.l=Length
+
+		movem.l	d1/a0-a1,-(sp)
+		move.l	d0,a1
+		bsr.b	_CheckFileFitDisk
+		tst.l	d0
+		bmi.b	.end
+		add.l	xx_DiskImage(pc),a1
+		move.l	d1,d0
+		bsr	_AppendFile
 .end		movem.l	(sp)+,d1/a0-a1
 		tst.l	d0
 		rts

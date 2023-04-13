@@ -2,7 +2,7 @@
 ;  :Program.	RawDIC.asm
 ;  :Contents.	create diskimages using parameter file
 ;  :Author.	Graham, Codetapper, Wepl
-;  :Version	$Id: RawDIC.asm 1.10 2005/01/23 18:44:38 wepl Exp wepl $
+;  :Version	$Id: RawDIC.asm 1.12 2005/04/26 23:30:58 wepl Exp wepl $
 ;  :History.	xx.xx.xx initial work upto v1.7 done by Graham
 ;		xx.xx.xx enhancements for reading from file done by Codetapper
 ;		16.07.04 cleanup, repacking (Wepl)
@@ -12,6 +12,12 @@
 ;			 variable disk names added
 ;			 cleanup for txt1
 ;		23.01.05 Wepl - revision bumped
+;               24.04.05 JOTD
+;                        no more drive click when reading from file
+;                        cleanup, better error handling
+;                        no retries if file is selected
+;                        "Select File" button sensitivity management added
+;
 ;  :Requires.	OS V37+, MC68000+
 ;  :Copyright.	?
 ;  :Language.	68000 Assembler
@@ -19,8 +25,8 @@
 ;  :To Do.
 ;---------------------------------------------------------------------------*
 
-Version		= 3
-Revision	= 2
+Version		= 4
+Revision	= 0
 
 	; the IMSG tags are used to define certain signals in the program
 	; i.e. a pressed button or a failure while reading a track
@@ -48,7 +54,7 @@ CALL_DISK	equ	3	; dsk_DiskCode is running
 
 MainWinXSize	equ	400
 
-		INCDIR	Includes:
+		INCDIR	Include:
 		INCLUDE	dos/dos.i
 		INCLUDE	dos/dosextens.i
 		INCLUDE	dos/var.i
@@ -57,15 +63,16 @@ MainWinXSize	equ	400
 		INCLUDE	graphics/gfx.i
 		INCLUDE	graphics/gfxbase.i
 		INCLUDE	intuition/intuition.i
+		INCLUDE	lvo/asl.i
 		INCLUDE	lvo/dos.i
 		INCLUDE	lvo/exec.i
 		INCLUDE	lvo/graphics.i
 		INCLUDE	lvo/intuition.i
 
-		INCLUDE	libraries/reqtools.i
-		INCLUDE	libraries/reqtools_lib.i
+		INCLUDE	libraries/asl.i
 		INCLUDE	rawdic.i
-		INCLUDE	/wwarp/wwarp.i
+		INCLUDE	libraries/trackwarp.i
+		INCLUDE	libraries/trackwarp_lib.i
 
 	OUTPUT	C:RawDIC
 	BOPT	O+		;enable optimizing
@@ -90,7 +97,7 @@ DFLG_DOUBLEINC2	equ	DFLG_DOUBLEINC&(~DFLG_NORESTRICTIONS)
 		dc.b	"] "
 		INCBIN	"T:date"
 		dc.b	0
-		dc.b	"$Id: RawDIC.asm 1.10 2005/01/23 18:44:38 wepl Exp wepl $",0
+		dc.b	"$Id: RawDIC.asm 1.12 2005/04/26 23:30:58 wepl Exp wepl $",0
 	EVEN
 
 main:
@@ -113,8 +120,8 @@ SM_Init:
 
 		move.l	xx_SlvStruct(pc),a0
 		move.b	slv_Version(a0),d0
-		cmp.b	#1,d0
-		beq.b	.vok
+		cmp.b	#3,d0			; slave version 1 or 2 ok
+		bcs.b	.vok
 		moveq	#IERR_VERSION,d0
 		bra	SM_Error
 .vok
@@ -157,9 +164,13 @@ SM_NextDisk:
 		move.l	xx_Disk(pc),d0
 		beq	SM_Finished
 
-		move.l	Button0(pc),a0
+		move.l	ButtonStart(pc),a0
 		bsr	OnButton
 		bsr	RefreshGadgets	; activate start button
+
+		move.l	ButtonSelectFile(pc),a0
+		bsr	OnButton
+		bsr	RefreshGadgets	; activate select file button
 
 		move.l	(xx_Disk),a0
 		cmp.w	#2,(dsk_Version,a0)
@@ -181,6 +192,8 @@ SM_NextDisk:
 		beq	SM_Start
 		cmp.b	#IMSG_SelectFile,d0
 		bne	.NoSelect
+		DEBUG_MESSAGE	<select pressed 1>
+
 		bsr	RequestAFile
 .NoSelect	bra.b	.l1
 
@@ -188,85 +201,75 @@ SM_Exit:	; State Machine is in endstate
 
 		rts
 
-SM_Error:	; Error occured, print errormessage and wait for CLOSEWINDOW
+; arg1: error code suffix
+; arg2: message text
+; arg3: message argument
+
+HANDLE_ERROR:MACRO
+	IFGT	NARG-1
+	lea	\2,a1
+	ENDC
+	cmp.b	#IERR_\1,d0
+	bne.b	.n\@
+	lea	Txt1_\1(pc),a0
+	bra	.display
+.n\@
+	ENDM
+
+HANDLE_ERROR_WAIT:MACRO
+	sub.l	a1,a1
+	IFGT	NARG-1
+	lea	\2,a1
+	ENDC
+	cmp.b	#IERR_\1,d0
+	bne.b	.n\@
+	lea	Txt1_\1(pc),a0
+	bsr	DisplayText
+	bra.b	SM_Delay	; special
+.n\@
+	ENDM
+
+SM_Error:	; Error occured, print errormessage and wait for CLOSEWINDOW, period.
+
+		DEBUG_MESSAGE	<error occured>
 
 		bsr	DriveMotorOff	; in case that custom error occured
 					; while reading a disk.
 
-		move.l	Button1(pc),a0
+		move.l	ButtonStop(pc),a0
 		bsr	OffButton
-		bsr	RefreshGadgets	; activate start button
+		bsr	RefreshGadgets	; deactivate stop button
+		move.l	ButtonSelectFile(pc),a0
+		bsr	OffButton
+		bsr	RefreshGadgets	; deactivate select file button
 
-		cmp.b	#IERR_NOTRACK,d0
-		bne.b	.nn
-		lea	Txt1_TLT(pc),a0
-		lea	(xx_CurrentTrack),a1
+		move.w	d0,xx_LastError	; store error code
+
+		HANDLE_ERROR	CHECKSUM,xx_CurrentTrack
+		HANDLE_ERROR	NOSYNC,xx_CurrentTrack
+		HANDLE_ERROR	NOSECTOR,xx_CurrentTrack
+		HANDLE_ERROR	NOWFILE,xx_LastIoErr
+		HANDLE_ERROR	OUTOFMEM
+		HANDLE_ERROR	DISKRANGE
+		HANDLE_ERROR	NOTRACK,xx_CurrentTrack
+		HANDLE_ERROR_WAIT	NODISK
+		HANDLE_ERROR	CRCFAIL
+		HANDLE_ERROR	TRACKLIST
+		HANDLE_ERROR	VERSION
+		HANDLE_ERROR	FLAGS
+		HANDLE_ERROR	DSKVERSION
+		HANDLE_ERROR	NOFUNCTION
+
+		cmp.b	#IERR_TWLIB,d0
+		bne.b	.ntw
+		sub.l	a1,a1
+		lea	Txt1_TWLIB(pc),a0
 		bra	.display
-.nn
-		cmp.b	#IERR_TRACKLIST,d0
-		bne.b	.n0
-		lea	Txt1_TLI(pc),a0
+.ntw
+		lea	xx_LastError,a1
+		lea	Txt1_UEC(pc),a0	; unknown/forgotten error code
 		bra	.display
-.n0
-		cmp.b	#IERR_VERSION,d0
-		bne.b	.n1
-		lea	Txt1_UV(pc),a0
-		bra	.display
-.n1
-		cmp.b	#IERR_FLAGS,d0
-		bne.b	.n2
-		lea	Txt1_UF(pc),a0
-		bra.b	.display
-.n2
-		cmp.b	#IERR_OUTOFMEM,d0
-		bne.b	.n3
-		lea	Txt1_OOM(pc),a0
-		bra.b	.display
-.n3
-		cmp.b	#IERR_CHECKSUM,d0
-		bne.b	.n4
-		lea	Txt1_CE(pc),a0
-		lea	xx_CurrentTrack(pc),a1
-		bra.b	.display
-.n4
-		cmp.b	#IERR_NOSYNC,d0
-		bne.b	.n5
-		lea	Txt1_SE(pc),a0
-		lea	xx_CurrentTrack(pc),a1
-		bra.b	.display
-.n5
-		cmp.b	#IERR_NOSECTOR,d0
-		bne.b	.n6
-		lea	Txt1_SM(pc),a0
-		move.w	xx_CurrentTrack(pc),a1
-		bra.b	.display
-.n6
-		cmp.b	#IERR_NODISK,d0
-		bne.b	.n7
-		lea	Txt1_ND(pc),a0
-		bsr	DisplayText
-		bra.b	SM_Delay
-.n7
-		cmp.b	#IERR_DISKRANGE,d0
-		bne.b	.n8
-		lea	Txt1_OD(pc),a0
-		bra.b	.display
-.n8
-		cmp.b	#IERR_CRCFAIL,d0
-		bne.b	.n9
-		lea	Txt1_NC(pc),a0
-		bra.b	.display
-.n9
-		cmp.b	#IERR_DSKVERSION,d0
-		bne.b	.n10
-		lea	Txt1_UDV(pc),a0
-		bra.b	.display
-.n10
-		cmp.b	#IERR_NOFUNCTION,d0
-		bne.b	.n11
-		lea	Txt1_NF(pc),a0
-		bra.b	.display
-.n11
+
 .wait		bsr	WaitIMSG
 		cmp.b	#IMSG_CLOSEWINDOW,d0
 		bne.b	.wait
@@ -283,7 +286,7 @@ SM_Finished:	; All disks finished, wait 1 second and exit
 		jsr	_LVODelay(a6)
 		bra	SM_Exit
 
-SM_Stop:	; Stop button pressed, wait 1 second and restart
+SM_Stop:	; Stop button pressed, wait 2 seconds and restart
 
 		bsr	Txt1Cancelled
 SM_Delay:
@@ -329,8 +332,10 @@ SM_Start:	; Start button pressed, start reading disk x
 		bmi	SM_Error
 
 		bsr	ResetDrive
+		tst.l	d0
+		bmi	SM_Error
 
-		move.l	Button1(pc),a0
+		move.l	ButtonStop(pc),a0
 		bsr	OnButton
 		bsr	RefreshGadgets	; activate stop button
 
@@ -371,7 +376,7 @@ SM_Start:	; Start button pressed, start reading disk x
 .noic		bsr	_FreeTrackBuffer
 .notb2		bsr	DriveMotorOff
 .notb
-		move.l	Button1(pc),a0
+		move.l	ButtonStop(pc),a0
 		bsr	OffButton
 		bsr	RefreshGadgets	; deactivate stop button
 
@@ -506,15 +511,19 @@ SM_ReadTrack:
 		rts
 
 _ReadTrackCore:
+		clr.b	.from_warp_file
 .retryall
-		lea	xx_Retry(pc),a0
-		move.w	xx_Retries(pc),(a0)	; retries on error
+		move.w	xx_Retries(pc),xx_Retry	; retries on error
 .retry
 		move.w	xx_CurrentTrack(pc),d0
 		bsr	Txt1ReadingTrack
 
 		bsr	InputFromFile		; Read from an input file
 		move.l	xx_BufferType(pc),d1	; Check the buffer type and
+		cmp.l	#BUFFER_EMPTY,d1
+		beq.b	.nofile
+		st.b	.from_warp_file
+.nofile
 		cmp.l	#BUFFER_ADOS,d1		; skip disk reading if done
 		beq	.error
 		cmp.l	#BUFFER_MFM,d1
@@ -527,6 +536,7 @@ _ReadTrackCore:
 		move.w	xx_Retry(pc),d0
 		cmp.w	xx_Retries(pc),d0	; on first retry
 		bne.b	.do
+
 		move.l	xx_CurrentDecoder(pc),d0
 		cmp.l	#DMFM_STD,d0	; on standard amiga format
 		bne.b	.do
@@ -541,7 +551,7 @@ _ReadTrackCore:
 		and.w	#DFLG_RAWREADONLY,d0	; only when DFLG is not set
 		bne.b	.do
 		bsr	DriveReadDisplay
-		bra.b	.error
+		bra.b	.error_handling
 .do
 		bsr	DriveRawReadDisplay
 .doraw		tst.l	d0
@@ -573,11 +583,16 @@ _ReadTrackCore:
 		lea	xx_ExternalCall(pc),a3
 		move.w	#CALL_NONE,(a3)
 		jsr	(a2)
+
+.error_handling
 .error
 		;bsr	OutputDebug2
 
 		tst.l	d0
 		bpl.b	.ok
+		tst.b	.from_warp_file
+		bne.b	.ok		; don't retry if from file
+
 		lea	xx_Retry(pc),a0
 		subq.w	#1,(a0)
 		bgt	.retry
@@ -593,18 +608,34 @@ _ReadTrackCore:
 		tst.l	d0
 		rts
 
+.from_warp_file
+		dc.w	0
+
+; call user init code
+
 _CallInitCode:
 		lea	xx_ExternalCall(pc),a0
 		move.w	#CALL_INIT,(a0)
 		move.l	xx_Disk(pc),a0
 		move.l	dsk_InitCode(a0),d0
 		bra.b	_Call
+
+; call user disk code
+
 _CallDiskCode:
 		lea	xx_ExternalCall(pc),a0
 		move.w	#CALL_DISK,(a0)
 		move.l	xx_Disk(pc),a0
 		move.l	dsk_DiskCode(a0),d0
 _Call:		beq.b	.s0
+
+		; actually call someting
+
+		movem.l	d0-d1/a0-a1,-(a7)
+		lea	(Txt1_Working),a0
+		bsr	DisplayText
+		movem.l	(a7)+,d0-d1/a0-a1
+
 		move.l	d0,a1
 		moveq	#0,d0
 		move.w	xx_CurrentDisk(pc),d0
@@ -623,7 +654,6 @@ xx_SlvStruct:	dc.l	0		; pointer to the slave structure
 xx_Text:	dc.l	0		; pointer to the short info text
 xx_RawBuffer:	dc.l	Space		; pointer to the raw mfm buffer (for DMA)
 xx_MFMBuffer:	dc.l	Buffer		; pointer to the raw mfm buffer (for decoder)
-;xx_RawLength:	dc.l	$6c00		; length of raw buffer
 xx_RawLength:	dc.l	$7c00		; length of raw buffer (Codetapper)
 xx_RawPointer:	dc.l	0		; pointer to the raw buffer
 xx_RawBit:	dc.l	0		; bit pointer to raw data
@@ -660,6 +690,8 @@ xx_SourceName:	dc.l	DefaultSource	; pointer to "DF0:"
 xx_InputName:	dc.l	0		; Pointer to the name of the input file
 xx_Ignore:	dc.l	0		; 1 when IGNOREERRORS is set
 xx_Debug:	dc.l	0		; 1 when DEBUG is set
+xx_LastError:   dc.w	0		; last error code from user function call
+xx_LastIoErr: dc.w	0		; last error code from user function call
 
 WinMove:	; D0=x-offset/D1=y-offset
 
@@ -715,6 +747,7 @@ GetIDCMP:	; D4=IDCMP flags/D5=Code/A4=adress
 
 
 WaitIDCMP:	; D4=IDCMP flags/D5=Code/A4=adress
+		DEBUG_MESSAGE	waitidcmp
 
 		movem.l	d0-d3/d6-d7/a0-a3/a5-a6,-(sp)
 		move.l	4.w,a6
@@ -736,11 +769,11 @@ ParseIDCMP:
 		move.l	d4,d0
 		and.l	#IDCMP_GADGETUP,d0
 		beq.b	.nogup
-		cmp.l	Button0(pc),a4
+		cmp.l	ButtonStart(pc),a4
 		beq.b	.startpressed
-		cmp.l	Button1(pc),a4
+		cmp.l	ButtonStop(pc),a4
 		beq.b	.stoppressed
-		cmp.l	Button2(pc),a4		; Select File added by Codetapper
+		cmp.l	ButtonSelectFile(pc),a4		; Select File added by Codetapper
 		beq.b	.selectpressed
 .nogup		move.l	d4,d0
 		and.l	#IDCMP_CLOSEWINDOW,d0
@@ -754,27 +787,30 @@ ParseIDCMP:
 .stoppressed	moveq	#IMSG_Stop,d0
 		bra.b	.exit
 .selectpressed	moveq	#IMSG_SelectFile,d0	; Select File added by Codetapper
+		DEBUG_MESSAGE	<select pressed 2>
 		bra.b	.exit
 
+
+OFF_BUTTON:MACRO
+	cmp.b	#IMSG_\1,d0
+	bne.b	.s\@
+	move.l	Button\1(pc),a0
+	bsr	OffButton		; turn off start button
+	bsr.b	RefreshGadgets
+.s\@
+	ENDM
 
 GetIMSG:	; gets an action
 
 		movem.l	d1-d7/a0-a6,-(sp)
-.l0		bsr	GetIDCMP
+		bsr	GetIDCMP
 		bsr	ParseIDCMP
 
-		cmp.b	#IMSG_Start,d0
-		bne.b	.s0
-		move.l	Button0(pc),a0
-		bsr	OffButton		; turn off start button
-		bsr.b	RefreshGadgets
-.s0
-		cmp.b	#IMSG_Stop,d0
-		bne.b	.s1
-		move.l	Button1(pc),a0
-		bsr	OffButton		; turn off stop button
-		bsr.b	RefreshGadgets
-.s1
+GetIMSG_end
+		OFF_BUTTON	Start
+		OFF_BUTTON	Stop
+		OFF_BUTTON	SelectFile
+
 		movem.l	(sp)+,d1-d7/a0-a6
 		rts
 
@@ -787,20 +823,7 @@ WaitIMSG:	; waits for an action to occur
 		cmp.b	#IMSG_NULL,d0
 		beq.b	.l0
 
-		cmp.b	#IMSG_Start,d0
-		bne.b	.s0
-		move.l	Button0(pc),a0
-		bsr	OffButton		; turn off start button
-		bsr.b	RefreshGadgets
-.s0
-		cmp.b	#IMSG_Stop,d0
-		bne.b	.s1
-		move.l	Button1(pc),a0
-		bsr	OffButton		; turn off stop button
-		bsr.b	RefreshGadgets
-.s1
-		movem.l	(sp)+,d1-d7/a0-a6
-		rts
+		bra	GetIMSG_end
 
 RefreshGadgets:	; A0=first gadget
 
@@ -813,31 +836,23 @@ RefreshGadgets:	; A0=first gadget
 		rts
 
 	include	slave.asm
-	include	mfmwarpdecruncher.asm
-	include	nomaddecruncher.asm
-	include	xpk.asm
 	include	readfromfile.asm
-	include	wwarpformats.asm
 
 	section	"stuff",BSS
 
+BUFFERLENGTH	= $7c00
 RTFILENAMELEN	= 108
 RTDIRNAMELEN	= 512
 rtfilename		ds.b	RTFILENAMELEN	; filename buffer for reqtools
 rtdirname		ds.b	RTDIRNAMELEN	; dirname buffer for reqtools
 rtname			ds.b	RTFILENAMELEN+RTDIRNAMELEN
-WWarpGlobals:		ds.b	gl_tmpbuf-8	; WWarp globals
 			ds.w	4		; space for 4 syncs
-;Buffer:		ds.b	$6c00
-Buffer:			ds.b	$7c00		; Codetapper
+Buffer:			ds.b	BUFFERLENGTH
 stringBuffer:
 sourceNameBuffer:	ds.b	$0200
 slaveNameBuffer:	ds.b	$0200		; 512 chars for filename + path should be enough
 
-nmd_Buffer:		ds.l	$1200/4		; Decrunch buffer for N.O.M.A.D Warp ($1200 bytes)
-
 	section	"chipmem",BSS_C
 
-;Space:			ds.b	$6c00
-Space:			ds.b	$7c00		; Codetapper
+Space:			ds.b	BUFFERLENGTH
 

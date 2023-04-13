@@ -1,9 +1,9 @@
 @database RawDIC
-$VER: RawDIC_Guide 3.2
-@node main "RawDIC documentation (23.1.2005)"
+$VER: RawDIC_Guide 4.0
+@node main "RawDIC documentation (24.4.2005)"
 
-			   RawDIC V3.2
-	   © 1999 by John Selck and © 2002-2005 by Codetapper/Wepl
+			   RawDIC V4.0
+	   © 1999 by John Selck and © 2002-2005 by Codetapper/Wepl/JOTD
 
 			@{" Disclaimer    " link disclaimer}
 			@{" About         " link about}
@@ -60,6 +60,10 @@ In most cases you will need an Amiga with atleast Kickstart 2.0 and
 
 The memory requirements will be decreased in future versions.
 
+If you are reading data from a warp or .adf file, you will need the @{"TRACKWARP" link trackwarp}
+ package from WHDLoad page to decode the tracks. The file trackwarp.library must exist
+in your libs: directory.
+
 If you are reading data from a MFMWarp file, you will need the @{"XPK" link xpk} package
 from Aminet to depack the tracks. The file xpkmaster.library must exist
 in your libs: directory.
@@ -74,6 +78,7 @@ disks.
 
 E-Mail: graham@cruise.de
 E-Mail: codetapper@whdload.de
+E-Mail: jotd2@whdload.de
 
 @endnode
 @node tooltypes "ToolTypes"
@@ -473,6 +478,16 @@ rawdic_AppendFile:
 	D0.l=length
 	=> D0.l=errorcode
 
+rawdic_AppendDiskFile:
+
+	Appends a part of the diskimage to an existing file, if the file does not
+	exist, it will be created (v4.0)
+
+	A0=filename
+	D0.l=offset in diskimage
+	D1.l=length
+	=> D0.l=errorcode
+
 rawdic_DMFM_STANDARD:
 
 	Standard Amiga track decoder.
@@ -557,7 +572,7 @@ IERR_OK		The name says it, everything went ok and RawDIC will
 
 IERR_CHECKSUM	Checksum error. Use this if a checksum test failed.
 
-IERR_NOSYNC	You don't need to care of this, as long es you use
+IERR_NOSYNC	You don't need to care of this, as long as you use
 		either a TrackList sync, rawdic_NextSync or
 		rawdic_NextMFMword. Normally this will be handled
 		automatically.
@@ -686,6 +701,17 @@ To depack data from MFMWarp files, you will need the XPK package.
 You can download the XPK package from Aminet:util/pack/xpk_User.lha
 
 @endnode
+@node trackwarp "trackwarp library"
+
+TrackWarp library is a warp file management library written by Wepl.
+Now RawDIC uses this library to read from MFM/NOMAD/WWarp/ADF/UAE extended
+ADF files
+
+You can download trackwarp library from WHDLoad page:
+
+http://www.whdload.de/whdload
+
+@endnode
 @node glossary "Glossary"
 
 ISlave:		The slave which has to be created to use RawDIC as a
@@ -729,6 +755,20 @@ WWarp:		A disk imaging format written by Wepl which stores tracks
 
 @endnode
 @node history "History"
+
+4.0     Released on 24.4.2005
+        (JOTD) removed all warp read code, now supported by trackwarp.library
+        (JOTD) fixed behaviour if no disk in drive at startup
+        (JOTD) no drive click if a file is selected (sorry Ian, you forgot
+        to test file in ResetDrive routine!)
+        (JOTD) error handling fixed/improved
+        (JOTD) added "Working..." message on user init & end routines
+        (JOTD) added rawdic_AppendDiskFile function
+        (JOTD) bumped slave versions to 2 in RawDIC.i. Slaves assembled with
+        this .i file are not compatible with versions 3.x and below (because
+        of new function added).
+        (JOTD) added .dic extension and disk.[0-9] to file selection pattern
+        (JOTD) reqtools.library no longer needed. Now uses asl.library
 
 3.2	Released on 23.1.2005
 	(Wepl) default disk name fixed, was broken since 3.0
