@@ -2,7 +2,7 @@
 ;  :Program.	RawDIC.asm
 ;  :Contents.	create diskimages using parameter file
 ;  :Author.	Graham, Codetapper, Wepl, Psygore
-;  :Version	$Id: RawDIC.asm 1.19 2007/12/23 21:27:25 wepl Exp wepl $
+;  :Version	$Id: RawDIC.asm 1.20 2008/07/31 07:47:58 wepl Exp wepl $
 ;  :History.	xx.xx.xx initial work upto v1.7 done by Graham
 ;		xx.xx.xx enhancements for reading from file done by Codetapper
 ;		16.07.04 cleanup, repacking (Wepl)
@@ -33,6 +33,8 @@
 ;			 version bumped to 4.4
 ;		23.12.07 Wepl
 ;			 version bumped to 4.5
+;		29.04.08 Wepl
+;			 bufferlength increased to $7c04 to read wwarps with $7c00
 ;  :Requires.	OS V37+, MC68000+
 ;  :Copyright.	?
 ;  :Language.	68000 Assembler
@@ -41,7 +43,7 @@
 ;---------------------------------------------------------------------------*
 
 Version		= 4
-Revision	= 5
+Revision	= 6
 
 	; the IMSG tags are used to define certain signals in the program
 	; i.e. a pressed button or a failure while reading a track
@@ -112,7 +114,7 @@ DFLG_DOUBLEINC2	equ	DFLG_DOUBLEINC&(~DFLG_NORESTRICTIONS)
 		dc.b	"] "
 		INCBIN	"T:date"
 		dc.b	0
-		dc.b	"$Id: RawDIC.asm 1.19 2007/12/23 21:27:25 wepl Exp wepl $",0
+		dc.b	"$Id: RawDIC.asm 1.20 2008/07/31 07:47:58 wepl Exp wepl $",0
 	EVEN
 
 main:
@@ -856,7 +858,7 @@ RefreshGadgets:	; A0=first gadget
 
 	section	"stuff",BSS
 
-BUFFERLENGTH	= $7c00
+BUFFERLENGTH	= $7c04
 RTFILENAMELEN	= 108
 RTDIRNAMELEN	= 512
 rtfilename		ds.b	RTFILENAMELEN	; filename buffer for aslreq

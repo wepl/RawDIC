@@ -1,9 +1,9 @@
 @database RawDIC
-$VER: RawDIC_Guide 4.5
-$Id: RawDIC.guide 1.15 2007/12/23 21:30:06 wepl Exp wepl $
+$VER: RawDIC_Guide 4.6
+$Id: RawDIC.guide 1.16 2008/07/31 07:47:58 wepl Exp wepl $
 @node main "RawDIC documentation (2.11.2006)"
 
-			   @{b}RawDIC V4.5@{ub}
+			   @{b}RawDIC V4.6@{ub}
 
 		      © 1999 by John Selck
 	  © 2002-2006 by Codetapper/Wepl/JOTD/Psygore
@@ -491,6 +491,15 @@ rawdic_DMFM_STANDARD:
 	D0.b=sectors per track (normally 11)
 	=> D0.l=errorcode
 
+rawdic_Print:
+
+	print message to stdout, for debugging purposes (v4.6)
+	all registers are preserved
+
+	A0.l = CPTR format string
+	A1.l = APTR arg array
+
+
 @endnode
 @node code "ISlave code"
 
@@ -743,6 +752,10 @@ WWarp:		A disk imaging format written by Wepl which stores tracks
 
 @endnode
 @node history "History"
+
+4.6	Released on 31.07.2008
+	(Wepl) new function rawdic_Print to simplify debugging
+	(Wepl) internal mfm buffer size increased to $7c04 to read wwarps with $7c00
 
 4.5	Released on 23.12.2007
 	(Psygore) fixed for SYNC_INDEX and readfromfile

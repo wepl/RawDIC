@@ -1,5 +1,5 @@
 
-	;	Include file for RawDIC V3.0
+	;	Include file for RawDIC
 
 		ifnd	EXEC_TYPES_I
 		include	exec/types.i
@@ -122,7 +122,13 @@
 		; IERR_CHECKSUM
 		; IERR_NOSECTOR
 
-	ULONG	rawdic_Reserved_1
+	ULONG	rawdic_Print
+		; print message to stdout, for debugging purposes (v4.6)
+		; all registers are preserved
+
+		; A0.l = CPTR format string
+		; A1.l = APTR arg array
+
 	ULONG	rawdic_Reserved_2
 	ULONG	rawdic_Reserved_3
 	ULONG	rawdic_Reserved_4

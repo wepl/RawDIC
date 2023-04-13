@@ -11,6 +11,8 @@
 ;		14.02.06 Psygore - _AppendFile fixed
 ;			 Wepl - _WriteFile, _AppendFile rewritten for correct
 ;				error checking
+;		30.04.08 Wepl:
+;			 lib_Print added
 ; Copyright:	Public Domain
 ; Language:	68000 Assembler
 ; Translator:	Barfly
@@ -27,8 +29,8 @@ rawdic_Library:
 		bra.w	lib_AppendFile
 		bra.w	lib_AppendDiskFile
 		bra.w	lib_DMFM_STANDARD
+		bra.w	lib_Print
 		bra.w	lib_Reserved	; future use?
-		bra.w	lib_Reserved
 		bra.w	lib_Reserved
 		bra.w	lib_Reserved
 	BOPT OD6+			;enable branch optimizing
@@ -97,6 +99,14 @@ lib_AbsErrorFunc:
 lib_AbsError:	move.l	xx_Stack(pc),sp	; exit with errormessage
 		bra	SM_Error
 
+		; => a0.l=formatstring a1.l=argarray
+lib_Print	movem.l	d0-d2/a0-a1/a6,-(a7)
+		move.l	dosbase,a6
+		move.l	a0,d1
+		move.l	a1,d2
+		jsr	(_LVOVPrintf,a6)
+		movem.l	(a7)+,d0-d2/a0-a1/a6
+		rts
 
 _TrackCRC16:	; calculates the CRC16 value of the track in trackbuffer
 
