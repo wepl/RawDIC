@@ -2,7 +2,7 @@
 ;  :Program.	RawDIC.asm
 ;  :Contents.	create diskimages using parameter file
 ;  :Author.	Graham, Codetapper, Wepl
-;  :Version	$Id: RawDIC.asm 1.5 2004/07/27 23:59:09 wepl Exp wepl $
+;  :Version	$Id: RawDIC.asm 1.6 2004/07/29 23:37:18 wepl Exp wepl $
 ;  :History.	xx.xx.xx initial work upto v1.7 done by Graham
 ;		xx.xx.xx enhancements for reading from file done by Codetapper
 ;		16.07.04 cleanup, repacking (Wepl)
@@ -14,7 +14,7 @@
 ;---------------------------------------------------------------------------*
 
 Version		= 2
-Revision	= 1
+Revision	= 2
 
 	; the IMSG tags are used to define certain signals in the program
 	; i.e. a pressed button or a failure while reading a track
@@ -45,6 +45,7 @@ MainWinXSize	equ	320
 		INCDIR	Includes:
 		INCLUDE	dos/dos.i
 		INCLUDE	dos/dosextens.i
+		INCLUDE	dos/var.i
 		INCLUDE	devices/trackdisk.i
 		INCLUDE	exec/exec.i
 		INCLUDE	graphics/gfx.i
@@ -66,7 +67,7 @@ MainWinXSize	equ	320
 	BOPT	ODd-		;disable mul optimizing
 	BOPT	ODe-		;disable mul optimizing
 	BOPT	wo-		;no optimize warnings
-	;BOPT	sa+		;write symbol hunks
+	BOPT	sa+		;write symbol hunks
 
 	IFND	.passchk
 	DOSCMD	"WBuild >T:build"
@@ -83,7 +84,7 @@ DFLG_DOUBLEINC2	equ	DFLG_DOUBLEINC&(~DFLG_NORESTRICTIONS)
 		dc.b	"] "
 		INCBIN	"T:date"
 		dc.b	0
-		dc.b	"$Id: RawDIC.asm 1.5 2004/07/27 23:59:09 wepl Exp wepl $",0
+		dc.b	"$Id: RawDIC.asm 1.6 2004/07/29 23:37:18 wepl Exp wepl $",0
 	EVEN
 
 main:
@@ -645,7 +646,6 @@ xx_DiskFinished: dc.w	0		; 1 when diskimage is completely read
 xx_Cancel:	dc.w	0		; 1 when error exit on Cancel pressed
 xx_TrackInc:	dc.w	0		; -2 , -1 , 1 , 2
 ;xx_ReadFrom:	dc.w	0		; Type of file we are reading from (0 = Disk, 1 = MFMWarp)
-xx_InputNameRT:	dc.l	inputNameReqBuffer	; Pointer to the name of the input file for the ReqTools buffer
 _rdargs		dc.l	0
 _rdarray
 xx_SlaveName:	dc.l	DefaultSlave	; pointer to the name of the imager slave
@@ -815,6 +815,11 @@ RefreshGadgets:	; A0=first gadget
 
 	section	"stuff",BSS
 
+RTFILENAMELEN	= 108
+RTDIRNAMELEN	= 512
+rtfilename		ds.b	RTFILENAMELEN	; filename buffer for reqtools
+rtdirname		ds.b	RTDIRNAMELEN	; dirname buffer for reqtools
+rtname			ds.b	RTFILENAMELEN+RTDIRNAMELEN
 WWarpGlobals:		ds.b	gl_tmpbuf-8	; WWarp globals
 			ds.w	4		; space for 4 syncs
 ;Buffer:		ds.b	$6c00
@@ -823,8 +828,6 @@ stringBuffer:
 sourceNameBuffer:	ds.b	$0200
 slaveNameBuffer:	ds.b	$0200		; 512 chars for filename + path should be enough
 
-inputNameReqBuffer:	ds.b	$0200		; Name for the MFMWarp/NOMADWarp/ADF file 
-			EVEN
 nmd_Buffer:		ds.l	$1200/4		; Decrunch buffer for N.O.M.A.D Warp ($1200 bytes)
 
 	section	"chipmem",BSS_C

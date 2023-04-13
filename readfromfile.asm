@@ -20,6 +20,9 @@
 ;		           (thanks to Psygore for the report and code!)
 ;		         - Drive light no longer turns on and off if you
 ;		           are reading from an input file
+;		30.07.04 Wepl
+;			 - requester handling rewritten, remember last file
+;			   in env "RawDIC.InputFile"
 ; Copyright:	Public Domain
 ; Language:	68000 Assembler
 ; Translator:	Barfly
@@ -1173,64 +1176,123 @@ DoubleRaws	movem.l	d1-a1,-(sp)
 
 ;---------------------------------------------------------------------
 
-filereq		dc.l	0
-
-RequestAFile	movem.l	d0-d7/a0-a6,-(sp)
+RequestAFile	movem.l	d0-d4/d7/a2-a3/a6,-(sp)
 
 		move.l	reqbase(pc),d0
 		beq	.norequester
+		move.l	d0,a6			;a6 = reqbase
 
-		move.l	#RT_FILEREQ,d0
-		sub.l	a0,a0
-		move.l	reqbase(pc),a6
-		jsr	_LVOrtAllocRequestA(a6)
-		move.l	d0,filereq
+		move.l	#RT_FILEREQ,d0		;mode
+		sub.l	a0,a0			;tags
+		jsr	(_LVOrtAllocRequestA,a6)
+		move.l	d0,d7			;d7 = filereq
 		beq	.norequester
 
-		move.l	xx_InputName(pc),a2
-		clr.b	(a2)
-		bsr	CloseReadFrom
+		cmp.l	#rtname,xx_InputName
+		beq	.alreadyinit
 
-		move.l	filereq(pc),a1
-		move.l	xx_InputNameRT(pc),a2	;Temporary buffer for filename
-		clr.b	(a2)
-		lea	SelectAFileMsg(pc),a3
-		sub.l	a0,a0
-		jsr	_LVOrtFileRequestA(a6)
-
+.chkarg		move.l	(xx_InputName),d1
+		bne	.fromargs
+	;read environment variable
+		lea	.varname,a0
+		move.l	a0,d1
+		move.l	#rtname,d2		;buffer
+		move.l	#RTDIRNAMELEN+RTFILENAMELEN,d3	;length
+		moveq	#0,d4			;flags
+		move.l	dosbase,a6
+		jsr	(_LVOGetVar,a6)
 		tst.l	d0
-		beq	.norequester
+		bmi	.alreadyinit
+		move.l	#rtname,xx_InputName
+		bra	.chkarg
+.fromargs
+		move.l	dosbase,a6
+		jsr	(_LVOFilePart,a6)
+		move.l	d0,a0
+		lea	(rtfilename),a1
+		move.w	#RTFILENAMELEN-2,d1
+.cpyf		move.b	(a0)+,(a1)+
+		dbeq	d1,.cpyf
+		clr.b	(a1)
+		move.l	(xx_InputName),a0
+		lea	(rtdirname),a1
+		sub.l	a0,d0
+		subq.l	#1,d0
+		bmi	.alreadyinit
+		cmp.l	#RTDIRNAMELEN-2,d0
+		blo	.cpyd
+		move.w	#RTDIRNAMELEN-2,d0
+.cpyd		move.b	(a0)+,(a1)+
+		dbf	d0,.cpyd
+		clr.b	(a1)
+.alreadyinit
+		clr.l	-(a7)
+		pea	(rtdirname)
+		pea	RTFI_Dir
+		pea	.pattern
+		pea	RTFI_MatchPat
+		move.l	a7,a0
+		move.l	d7,a1
+		move.l	reqbase,a6
+		jsr	(_LVOrtChangeReqAttrA,a6)
+		add.w	#20,a7
 
-		bsr	GetFullRTName		;Find complete path to file
+		clr.l	-(a7)
+		pea	(FREQF_NOBUFFER|FREQF_PATGAD)
+		pea	RTFI_Flags
+		move.l	a7,a0			;tags
+		move.l	d7,a1			;filereq
+		lea	rtfilename,a2		;Temporary buffer for filename
+		lea	.title,a3
+		jsr	(_LVOrtFileRequestA,a6)
+		add.w	#12,a7
+		tst.l	d0
+		beq	.requesterfail
 
-		move.l	filereq(pc),a1
-		jsr	_LVOrtFreeRequest(a6)
+	;copy dirname for next requester
+		move.l	d7,a0
+		move.l	(rtfi_Dir,a0),a0
+		lea	rtdirname,a1
+		move.w	#RTDIRNAMELEN-2,d0
+.cpydir		move.b	(a0)+,(a1)+
+		dbeq	d0,.cpydir
+		clr.b	(a1)
+		
+	;build full name
+		move.l	d7,a0
+		move.l	(rtfi_Dir,a0),a0
+		lea	rtname,a1
+		move.w	#RTDIRNAMELEN+RTFILENAMELEN-2,d0
+.cpy		move.b	(a0)+,(a1)+
+		dbeq	d0,.cpy
+		clr.b	(a1)
+		lea	(rtname),a0
+		move.l	a0,d1
+		lea	(rtfilename),a0
+		move.l	a0,d2
+		move.l	#RTDIRNAMELEN+RTFILENAMELEN,d3
+		move.l	dosbase,a6
+		jsr	(_LVOAddPart,a6)
+	;remember in environment variable
+		lea	.varname,a0
+		move.l	a0,d1
+		move.l	#rtname,d2		;buffer
+		moveq	#-1,d3			;length
+		move.l	#GVF_GLOBAL_ONLY|GVF_SAVE_VAR,d4	;flags
+		jsr	(_LVOSetVar,a6)
 
-.norequester	movem.l	(sp)+,d0-d7/a0-a6
+		bsr	CloseReadFrom
+		move.l	#rtname,xx_InputName
+.requesterfail
+		move.l	d7,a1
+		move.l	reqbase,a6
+		jsr	(_LVOrtFreeRequest,a6)
+.norequester
+		movem.l	(sp)+,_MOVEMREGS
 		rts
 
-GetFullRTName	movem.l	d0-d7/a0-a6,-(sp)
-
-		move.l	xx_InputNameRT(pc),a0	;a0 = Filename only
-		move.l	xx_InputName(pc),a1
-		move.l	filereq(pc),a2
-		move.l	$10(a2),a2		;a2 = Directory only
-		tst.b	(a2)
-		beq.b	_Petla2
-_Petla		move.b	(a2)+,(a1)+
-		bne.b	_Petla
-		subq.l	#2,a1
-		move.b	(a1)+,d0
-		cmp.b	#':',d0
-		beq.s	_Petla2
-		move.b	#'/',(a1)+
-_Petla2		move.b	(a0)+,(a1)+
-		bne.b	_Petla2
-		move.b	#0,(a1)+
-
-		movem.l	(sp)+,d0-d7/a0-a6
-		rts
-
-SelectAFileMsg	dc.b	"Select a file",0
+.title		dc.b	"Select a file",0
+.pattern	dc.b	"#?.(adf|mfm|wrp|wwp)",0
+.varname	dc.b	"RawDIC.InputFile",0
 		EVEN
-		CNOP	0,4
+
