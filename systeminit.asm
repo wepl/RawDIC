@@ -12,6 +12,13 @@
 ;		27.07.04 Wepl
 ;			 using dos.ReadArgs(), requires dos v37 now
 ;			 DEBUG directly writes to stdout, no extra file anymore
+;		20.08.04 Wepl
+;			 debug output also if no disk matches
+;		14.01.05 Wepl
+;			 cylinder>79 support added
+;		17.01.05 Wepl
+;			 variable disk names added
+;			 cleanup for txt1
 ; Copyright:	Public Domain
 ; Language:	68000 Assembler
 ; Translator:	Barfly
@@ -664,97 +671,87 @@ DefaultSource:	dc.b	"DF0:",0
 
 Txt1InvalidSlave:	; displays "Invalid slave!"
 		lea	Txt1_IS(pc),a0
-		bra.b	Txt1_1
+		bra	DisplayText
 Txt1Cancelled:
 		lea	Txt1_C(pc),a0
-		bra.b	Txt1_1
+		bra	DisplayText
 Txt1Finished:
 		lea	Txt1_F(pc),a0
-Txt1_1:
-		movem.l	d0/a0-a1,-(sp)
-		bsr.b	ClearTxt1Buffer
-		lea	Txt1Buffer(pc),a1
-		bsr	CopyCString
-		bsr	PrintOnTextDisplay1
-		movem.l	(sp)+,d0/a0-a1
-		rts
-Txt1InsertDisk:	; displays "Insert disk ??? and press Start."
-		; D0.b=disknumber (0-255)
-		movem.l	d0/a0-a1,-(sp)
-		bsr.b	ClearTxt1Buffer
-		lea	Txt1_ID(pc),a0
-		lea	Txt1Buffer(pc),a1
-		bsr.b	CopyCString
-		and.w	#$00ff,d0
-		bsr.b	ConvertWord2Asc
-		lea	Txt1_APS(pc),a0
-		bsr.b	CopyCString
-		bsr	PrintOnTextDisplay1
-		movem.l	(sp)+,d0/a0-a1
-		rts
+		bra	DisplayText
 Txt1ReadingTrack:	; displays "Reading track ???."
 		; D0.w=tracknumber (0-65535)
-		movem.l	d0/a0-a1,-(sp)
-		bsr.b	ClearTxt1Buffer
-		lea	Txt1_RT(pc),a0
-		lea	Txt1Buffer(pc),a1
-		bsr.b	CopyCString
-		bsr.b	ConvertWord2Asc
-		move.b	#".",(a1)+
-		bsr	PrintOnTextDisplay1_noclr
-		movem.l	(sp)+,d0/a0-a1
+		movem.l	d0-d1/a0-a1,-(sp)
+		lea	(Txt1_RT),a0
+		clr.w	-(a7)
+		move.w	d0,-(a7)
+		move.l	a7,a1
+		bsr	DisplayText
+		addq.l	#4,a7
+		movem.l	(sp)+,d0-d1/a0-a1
 		rts
-Txt1_NumPoint:
-		movem.l	d0/a0-a1,-(sp)
-		bsr.b	Txt1_DoNumPoint
-		movem.l	(sp)+,d0/a0-a1
-		bra	PrintOnTextDisplay1
-Txt1_DoNumPoint:
-		bsr.b	ClearTxt1Buffer
-		lea	Txt1Buffer(pc),a1
-		bsr.b	CopyCString
-		bsr.b	ConvertWord2Asc
-		move.b	#".",(a1)+
+
+;----------------------------------------
+; IN:	D0 = ULONG buffer length
+;	A0 = APTR format string
+;	A1 = APTR args
+;	A2 = APTR buffer
+; OUT:	-
+
+_FormatString	movem.l	d0-d1/a0-a3/a6,-(a7)
+		lea	(.bufend),a3
+		add.l	a2,d0
+		move.l	d0,(a3)
+		move.l	a2,a3
+		lea	(.PutChar),a2
+		move.l	(4),a6
+		jsr	(_LVORawDoFmt,a6)
+		movem.l	(a7)+,_MOVEMREGS
 		rts
-ClearTxt1Buffer:
-		movem.l	d0/a0,-(sp)
+
+.PutChar	move.b	d0,(a3)+
+		cmp.l	(.bufend),a3
+		bne	.PC_ok
+		subq.l	#1,a3
+.PC_ok		rts	
+
+.bufend		dc.l	0
+
+;----------------------------------------
+; IN:	A0 = APTR format string
+;	A1 = APTR args
+; OUT:	-
+
+DisplayText	bsr.b	Txt1_CLR
+		movem.l	a2/a6,-(a7)
+		move.l	#TXT1BUFFERLEN,d0
+		lea	(Txt1Buffer),a2
+		bsr	_FormatString
+		move.l	gfxbase(pc),a6
+		move.l	WinRastPort(pc),a1
+		moveq	#2,d0
+		jsr	_LVOSetAPen(a6)
+		move.l	WinRastPort(pc),a1
+		moveq	#4,d0
+		jsr	_LVOSetBPen(a6)
+		moveq	#4,d0
+		moveq	#1,d1
+		move.l	TextDisplay1(pc),a0
+		add.w	ty_LeftEdge(a0),d0
+		add.w	ty_TopEdge(a0),d1
+		move.l	textfontrp(pc),a0
+		add.w	tf_YSize(a0),d1
+		move.l	WinRastPort(pc),a1
+		jsr	_LVOMove(a6)
 		lea	Txt1Buffer(pc),a0
-		moveq	#31,d0
-.l0		move.b	#$20,(a0)+
-		dbra	d0,.l0
-		movem.l	(sp)+,d0/a0
+		move.l	a0,a1
+		moveq	#-1,d0
+.cnt		addq.l	#1,d0
+		tst.b	(a1)+
+		bne	.cnt
+		move.l	WinRastPort(pc),a1
+		jsr	_LVOText(a6)
+		movem.l	(a7)+,_MOVEMREGS
 		rts
-
-CopyCString:	; copies a 0-terminated C-String. (0 will not be copied)
-		move.l	d0,-(sp)
-.l0		move.b	(a0)+,d0
-		beq.b	.fin
-		move.b	d0,(a1)+
-		bra.b	.l0
-.fin		move.l	(sp)+,d0
-		rts
-ConvertWord2Asc:	; A1=Destination
-		; D0.w=value
-
-		movem.l	d0-d1/a0,-(sp)
-		lea	Dec(pc),a0
-		moveq	#4,d1
-		swap	d0
-.l0		swap	d0
-		and.l	#$0000ffff,d0
-		divu.w	(a0)+,d0
-		tst.w	d0
-		dbne	d1,.l0
-.l1		or.b	#"0",d0
-		move.b	d0,(a1)+
-		swap	d0
-		and.l	#$0000ffff,d0
-		divu.w	(a0)+,d0
-		subq.w	#1,d1
-		bpl.b	.l1
-		movem.l	(sp)+,d0-d1/a0
-		rts
-Dec:		dc.w	10000,1000,100,10,1
 
 PrintOnTextDisplay1:
 		bsr.b	Txt1_CLR
@@ -787,10 +784,11 @@ Txt1_CLR:
 		movem.l	(sp)+,a0-a1
 		rts
 
-Txt1Buffer:	ds.b	32	; empty buffer for textdisplay
+TXT1BUFFERLEN	= 64
+Txt1Buffer:	ds.b	TXT1BUFFERLEN	; empty buffer for textdisplay
 Txt1_NF:	dc.b	"Illegal RawDIC function call!",0
 Txt1_NC:	dc.b	"Unknown disk version!",0
-Txt1_TLT:	dc.b	"Track not in TrackList!",0
+Txt1_TLT:	dc.b	"Track %d not in TrackList!",0
 Txt1_TLI:	dc.b	"TrackList invalid!",0
 Txt1_OOM:	dc.b	"Out of memory!",0
 Txt1_ND:	dc.b	"No disk in drive!",0
@@ -799,33 +797,34 @@ Txt1_UDV:	dc.b	"Unknown disk structure version!",0
 Txt1_UV:	dc.b	"Unknown slave version!",0
 Txt1_UF:	dc.b	"Undefined flags set!",0
 Txt1_IS:	dc.b	"Invalid slave!",0
-Txt1_ID:	dc.b	"Insert disk ",0
-Txt1_APS:	dc.b	" and press Start.",0
-Txt1_RT:	dc.b	"Reading track ",0
-Txt1_CE:	dc.b	"Checksum error on track ",0
-Txt1_SE:	dc.b	"No sync signal on track ",0
-Txt1_SM:	dc.b	"Sector missing on track ",0
+Txt1_InsDskNum	dc.b	"Insert disk %d and press Start.",0
+Txt1_InsDskTxt	dc.b	"Insert disk '%s' and press Start.",0
+Txt1_RT:	dc.b	"Reading track %d.",0
+Txt1_CE:	dc.b	"Checksum error on track %d",0
+Txt1_SE:	dc.b	"No sync signal on track %d",0
+Txt1_SM:	dc.b	"Sector missing on track %d",0
 Txt1_C:		dc.b	"Cancelled!",0
 Txt1_F:		dc.b	"Finished.",0
-Txt1_INP_OPEN:	dc.b	"Input file would not open on track ",0
-Txt1_INP_SEEK:	dc.b	"Input file seek error on track ",0
-Txt1_INP_READ:	dc.b	"Input file read error on track ",0
-Txt1_INP_NOTRK:	dc.b	"Input file does not contain track ",0
-Txt1_INP_BADHD:	dc.b	"Input file has a bad header on track ",0
-Txt1_XPK_DEPACK: dc.b	"MFMWarp XPK depack error on track ",0
-Txt1_MC1_DEPACK: dc.b	"MFMWarp MC1 depack error on track ",0
-Txt1_DIP_DEPACK: dc.b	"MFMWarp DIP depack error on track ",0
-Txt1_MFM_CSUM:	dc.b	"MFMWarp checksum error on track ",0
-Txt1_INP_ILLEN:	dc.b	"Input file illegal length on track ",0
-Txt1_FORMAT_UNS: dc.b	"Input file format is unsupported on track ",0
-Txt1_INP_INCOMP: dc.b	"Input file format is incompatible with decoder on track ",0
-Txt1_NMD_DEPACK: dc.b	"NOMADWarp depack error on track ",0
-Txt1_WWP_UNS:	dc.b	"WWarp file format v2+ is unsupported on track ",0
-Txt1_TABL_DATA:	dc.b	"WWarp table data error on track ",0
-Txt1_TABL_UNS:	dc.b	"WWarp table header version unsupported on track ",0
-Txt1_TRCK_UNS:	dc.b	"WWarp track header version unsupported on track ",0
-Txt1_TRCK_TYPE:	dc.b	"WWarp track type unsupported on track ",0
-Txt1_TRCK_FLAG:	dc.b	"WWarp track flags unsupported on track ",0
+Txt1_INP_OPEN:	dc.b	"Input file would not open",0
+Txt1_INP_SEEK:	dc.b	"Input file seek error",0
+Txt1_INP_READ:	dc.b	"Input file read error",0
+Txt1_INP_NOTRK:	dc.b	"Input file does not contain",0
+Txt1_INP_BADHD:	dc.b	"Input file has a bad header",0
+Txt1_XPK_DEPACK: dc.b	"MFMWarp XPK depack error",0
+Txt1_MC1_DEPACK: dc.b	"MFMWarp MC1 depack error",0
+Txt1_DIP_DEPACK: dc.b	"MFMWarp DIP depack error",0
+Txt1_MFM_CSUM:	dc.b	"MFMWarp checksum error",0
+Txt1_INP_ILLEN:	dc.b	"Input file illegal length",0
+Txt1_FORMAT_UNS: dc.b	"Input file format is unsupported",0
+Txt1_INP_INCOMP: dc.b	"Input file format is incompatible with decoder",0
+Txt1_NMD_DEPACK: dc.b	"NOMADWarp depack error",0
+Txt1_WWP_UNS:	dc.b	"WWarp file format v2+ is unsupported",0
+Txt1_TABL_DATA:	dc.b	"WWarp table data error",0
+Txt1_TABL_UNS:	dc.b	"WWarp table header version unsupported",0
+Txt1_TRCK_UNS:	dc.b	"WWarp track header version unsupported",0
+Txt1_TRCK_TYPE:	dc.b	"WWarp track type unsupported",0
+Txt1_TRCK_FLAG:	dc.b	"WWarp track flags unsupported",0
+Txt1_ontrack	dc.b	"%s on track %d.",0
 		cnop	0,2
 
  STRUCTURE Button,0
@@ -1327,8 +1326,8 @@ _BrdrDiffs:
 DriveMotorOn:
 		movem.l	d0-d7/a0-a6,-(sp)
 
-		move.l	xx_InputName(pc),a0	;Codetapper added this!
-		tst.b	(a0)			;If there is an input file
+		move.l	xx_InputName(pc),d0	;Codetapper added this!
+						;If there is an input file
 		bne	.MotorOnDone		;don't turn on the motor
 
 		move.l	4.w,a6
@@ -1336,14 +1335,14 @@ DriveMotorOn:
 		move.w	#TD_MOTOR,IO_COMMAND(a1)
 		move.l	#1,IO_LENGTH(a1)
 		jsr	_LVODoIO(a6)
-.MotorOnDone		movem.l	(sp)+,d0-d7/a0-a6
+.MotorOnDone	movem.l	(sp)+,d0-d7/a0-a6
 		rts
 
 DriveMotorOff:
 		movem.l	d0-d7/a0-a6,-(sp)
 
-		move.l	xx_InputName(pc),a0	;Codetapper added this!
-		tst.b	(a0)			;If there is an input file
+		move.l	xx_InputName(pc),d0	;Codetapper added this!
+						;If there is an input file
 		bne	.MotorOffDone		;don't turn on the motor
 
 		move.l	4.w,a6
@@ -1377,15 +1376,15 @@ GetAbsTrackNum:
 
 DriveRawReadDisplay:
 		bsr.b	GetAbsTrackNum
-
-		;bsr.b	DriveRawRead
-		;rts
 DriveRawRead:
 		; D0.w=track
 		; => D0.l=errorcode
 
 		movem.l	d1-d7/a0-a6,-(sp)
-		move.l	4.w,a6
+		move.l	d0,d7
+		ext.l	d7			;D7 = track number
+		lea	IORequest(pc),a5	;A5 = ioreq
+		move.l	4.w,a6			;A6 = execbase
 
 		lea	xx_RawPointer(pc),a0
 		move.l	xx_RawBuffer(pc),d1
@@ -1395,26 +1394,29 @@ DriveRawRead:
 		lea	xx_RawBit(pc),a0
 		clr.l	(a0)			; set invalid bitpointer
 
-		lea	IORequest(pc),a1
+		move.l	a5,a1
 		move.w	#TD_CHANGESTATE,IO_COMMAND(a1)
-		move.w	d0,-(sp)
 		jsr	_LVODoIO(a6)
-		moveq	#0,d0
-		move.w	(sp)+,d0
-		lea	IORequest(pc),a1
-		tst.l	IO_ACTUAL(a1)
+		tst.l	IO_ACTUAL(a5)
 		bne.b	.nodisk
+		
+		move.l	d7,d0
+		move.l	a5,a1
+		bsr	_tdenable81
 
-		;lea	IORequest(pc),a1
+		move.l	a5,a1
 		move.l	xx_RawBuffer(pc),IO_DATA(a1)
 		move.l	xx_RawLength(pc),IO_LENGTH(a1)
-		move.l	d0,IO_OFFSET(a1)
+		move.l	d7,IO_OFFSET(a1)
 		move.w	#TD_RAWREAD,IO_COMMAND(a1)
-		move.b	#IOTDB_INDEXSYNC,IO_FLAGS(a1)
+		move.b	#0,IO_FLAGS(a1)
 		clr.b	IO_ERROR(a1)
 		jsr	_LVODoIO(a6)
-		lea	IORequest(pc),a1
-		move.b	IO_ERROR(a1),d0
+
+		move.l	a5,a1
+		bsr	_tddisable81
+
+		move.b	IO_ERROR(a5),d0
 		bne.b	.nomfm
 
 		move.l	xx_RawBuffer(pc),a0
@@ -1443,8 +1445,6 @@ DriveRawRead:
 
 DriveReadDisplay:
 		bsr	GetAbsTrackNum
-		;bsr.b	DriveRead
-		;rts
 DriveRead:
 		; D0.w=track
 		; => D0.l=errorcode
@@ -1582,13 +1582,13 @@ ParseSource:
 .exit
 		rts
 
+OutputDebugCRC	bsr	_TrackCRC16
 OutputDebug:
-		movem.l	d0/d2/a6,-(sp)
+		movem.l	d0-d2/a0-a1/a6,-(sp)
 
 		move.l	xx_Debug(pc),d1
 		beq.b	.s0
 
-		bsr	_TrackCRC16
 		move.w	d0,-(a7)
 		move.w	xx_CurrentTrack(pc),-(a7)
 		bsr	_GetDiskName
@@ -1599,10 +1599,6 @@ OutputDebug:
 		move.l	dosbase,a6
 		jsr	(_LVOVPrintf,a6)
 		add.w	#8,a7
-
-		movem.l	(sp)+,_MOVEMREGS
-		moveq	#IERR_OK,d0		; destroy tle_Decoder errorcode
-		rts
 
 .s0		movem.l	(sp)+,_MOVEMREGS
 		rts
@@ -1615,7 +1611,7 @@ txt2_noport:	dc.b	"Could not open Message Port!",10,0
 txt2_nodev:	dc.b	"Could not open trackdisk.device!",10,0
 rawdicInfo:	sprintx	"RawDIC V%ld.%ld ",Version,Revision
 		INCBIN	"T:date"
-		dc.b	" ©1999 by John Selck, ©2002-2004 by Codetapper/Wepl",10,0
+		dc.b	" ©1999 by John Selck, ©2002-2005 by Codetapper/Wepl",10,0
 _template	dc.b	"Slave,Retries/K/N,Source/K,Input/K,IgnoreErrors/S,Debug/S",0
 		cnop	0,2
 WriteStdOut:
@@ -1720,9 +1716,14 @@ ErrorRequest:	movem.l	d1-d7/a0-a6,-(sp)
 		lea	xx_Cancel(pc),a1
 		clr.w	(a1)
 		move.l	d0,-(sp)
-		move.w	xx_CurrentTrack(pc),d0
-		bsr	Txt1_DoNumPoint
-		clr.b	(a1)
+		clr.w	-(a7)
+		move.w	xx_CurrentTrack(pc),-(a7)
+		move.l	a0,-(a7)
+		lea	(Txt1_ontrack),a0
+		move.l	a7,a1
+		lea	Txt1Buffer(pc),a2
+		move.l	#TXT1BUFFERLEN,d0
+		bsr	_FormatString
 		lea	Txt1Buffer(pc),a0
 		lea	req_Int2(pc),a1
 		move.l	a0,it_IText(a1)
@@ -1820,3 +1821,91 @@ RectFill:	; replacement for _LVORectFill
 		bra.b	.l0
 .norect		movem.l	(sp)+,d0-d7/a0-a6
 		rts
+
+;----------------------------------------
+; patch trackdisk device to allow access to cylinder 80/81
+; IN:	D0 = ULONG track to access
+;	A1 = APTR  ioreq
+; OUT:	-
+
+MAXTRACKS=164
+_tdpatchdata	dc.l	0
+_tdpatchdone	dc.b	0
+	EVEN
+
+_tdenable81	cmp.w	#160,d0
+		blo	.end
+
+	;check hackdisk.device
+		move.l	(IO_DEVICE,a1),a0
+		move.l	(LIB_IDSTRING,a0),a0
+		cmp.b	#"H",(a0)+
+		bne	.check_td
+		cmp.b	#"a",(a0)+
+		bne	.check_td
+		cmp.b	#"c",(a0)+
+		bne	.check_td
+		cmp.b	#"k",(a0)+
+		bne	.check_td
+		move.l	(IO_UNIT,a1),a0
+	;offset taken from hackdisk source:
+		cmp.b	#160,(TDU_PUBLICUNITSIZE+TV_SIZE+MLH_SIZE+7,a0)
+		bne	.check_td
+		move.b	#MAXTRACKS,(TDU_PUBLICUNITSIZE+TV_SIZE+MLH_SIZE+7,a0)
+		move.l	#"Hack",(_tdpatchdata)
+		bra	.patched
+
+	;ckeck trackdisk.device
+.check_td	move.l	(IO_UNIT,a1),a0
+		moveq	#$28,d1
+.search		cmp.l	#901120,(a0)			;only DD supported
+		beq	.found_td
+		addq.l	#2,a0
+		dbf	d1,.search
+		bra	.end
+
+.found_td	subq.l	#2,a0
+		cmp.w	#160,(a0)
+		bne	.end
+		move.w	#MAXTRACKS,(a0)+
+		move.l	#MAXTRACKS*$1600,(a0)
+		move.l	#MAXTRACKS*$1600,(_tdpatchdata)
+
+.patched	st	(_tdpatchdone)
+
+.end		rts
+
+;----------------------------------------
+; remove trackdisk device patch
+; IN:	A1 = APTR  ioreq
+; OUT:	-
+
+_tddisable81	tst.b	(_tdpatchdone)
+		beq	.end
+
+		move.l	(IO_UNIT,a1),a0
+		move.l	(_tdpatchdata),d0
+
+		cmp.l	#"Hack",d0
+		bne	.trackdisk
+
+.hackdisk	move.b	#160,(TDU_PUBLICUNITSIZE+TV_SIZE+MLH_SIZE+7,a0)
+		bra	.unpatched
+
+.trackdisk	moveq	#$28,d1
+.search		cmp.l	(a0),d0
+		beq	.found
+		addq.l	#2,a0
+		dbf	d1,.search
+		bra	.end
+
+.found		subq.l	#2,a0
+		cmp.w	#MAXTRACKS,(a0)
+		bne	.end
+		move.w	#160,(a0)+
+		move.l	#901120,(a0)
+
+.unpatched	sf	(_tdpatchdone)
+
+.end		rts
+

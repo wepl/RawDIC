@@ -1,3 +1,13 @@
+;*---------------------------------------------------------------------------
+; Program:	slave.asm
+; Contents:	
+; History:	
+;		20.08.04 Wepl
+;			 debug output also if no disk matches
+; Copyright:	Public Domain
+; Language:	68000 Assembler
+; Translator:	Barfly
+;---------------------------------------------------------------------------*
 
 rawdic_Library:
 
@@ -230,9 +240,10 @@ _TestDisk:	; tests a disks validity
 		moveq	#IERR_TRACKLIST,d0
 		rts
 .tracksok	move.w	dsk_Version(a0),d0
-		cmp.w	#1,d0
-		beq.b	.version1
-		moveq	#IERR_DSKVERSION,d0
+		beq	.dskversion
+		cmp.w	#2,d0
+		bls.b	.version1
+.dskversion	moveq	#IERR_DSKVERSION,d0
 		rts
 .version1	move.w	#DFLG_VERSION1,d0
 		not.w	d0
@@ -529,14 +540,19 @@ _SaveDiskImage:	; stores a diskimage from memory to hd
 
 _GetDiskName:	lea	_DInum(pc),a1
 		move.w	xx_CurrentDisk(pc),d0
-		and.w	#$00ff,d0
-		bsr	ConvertWord2Asc
-		clr.b	(a1)
+		divu	#10,d0
+		beq	.1
+		add.b	#"0",d0
+		move.b	d0,(a0)+
+.1		swap	d0
+		add.b	#"0",d0
+		move.b	d0,(a0)+
+		clr.b	(a0)
 		lea	_DIname(pc),a0
 		rts
 
 _DIname:	dc.b	"Disk."
-_DInum:		dc.b	0,0,0,0
+_DInum:		dc.b	0,0,0
 		cnop	0,2
 
 _WriteFile:	; stores a file into the given path
@@ -972,6 +988,7 @@ _TestCRC:	; compares the CRC values of the CRClist with the tracks.
 		tst.l	d0
 		bne.b	.error
 		bsr	_TrackCRC16
+		bsr	OutputDebug
 		cmp.w	crc_Checksum(a0),d0
 		bne.b	.csum
 		addq.l	#crc_SIZEOF,a0
@@ -989,3 +1006,4 @@ _TestCRC:	; compares the CRC values of the CRClist with the tracks.
 		movem.l	(sp)+,d1-d7/a0-a6
 		moveq	#IERR_CRCFAIL,d0
 		rts
+

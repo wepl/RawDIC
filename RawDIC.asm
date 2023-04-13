@@ -2,10 +2,15 @@
 ;  :Program.	RawDIC.asm
 ;  :Contents.	create diskimages using parameter file
 ;  :Author.	Graham, Codetapper, Wepl
-;  :Version	$Id: RawDIC.asm 1.6 2004/07/29 23:37:18 wepl Exp wepl $
+;  :Version	$Id: RawDIC.asm 1.8 2005/01/17 23:35:29 wepl Exp wepl $
 ;  :History.	xx.xx.xx initial work upto v1.7 done by Graham
 ;		xx.xx.xx enhancements for reading from file done by Codetapper
 ;		16.07.04 cleanup, repacking (Wepl)
+;		20.08.04 Wepl
+;			 debug output also if no disk matches
+;		17.01.05 Wepl
+;			 variable disk names added
+;			 cleanup for txt1
 ;  :Requires.	OS V37+, MC68000+
 ;  :Copyright.	?
 ;  :Language.	68000 Assembler
@@ -13,8 +18,8 @@
 ;  :To Do.
 ;---------------------------------------------------------------------------*
 
-Version		= 2
-Revision	= 2
+Version		= 3
+Revision	= 0
 
 	; the IMSG tags are used to define certain signals in the program
 	; i.e. a pressed button or a failure while reading a track
@@ -84,7 +89,7 @@ DFLG_DOUBLEINC2	equ	DFLG_DOUBLEINC&(~DFLG_NORESTRICTIONS)
 		dc.b	"] "
 		INCBIN	"T:date"
 		dc.b	0
-		dc.b	"$Id: RawDIC.asm 1.6 2004/07/29 23:37:18 wepl Exp wepl $",0
+		dc.b	"$Id: RawDIC.asm 1.8 2005/01/17 23:35:29 wepl Exp wepl $",0
 	EVEN
 
 main:
@@ -155,8 +160,19 @@ SM_NextDisk:
 		bsr	OnButton
 		bsr	RefreshGadgets	; activate start button
 
-		move.w	xx_CurrentDisk(pc),d0
-		bsr	Txt1InsertDisk
+		move.l	(xx_Disk),a0
+		cmp.w	#2,(dsk_Version,a0)
+		blo	.dsknum
+		tst.l	(dsk_DiskName,a0)
+		beq	.dsknum
+		lea	(dsk_DiskName,a0),a1
+		lea	(Txt1_InsDskTxt),a0
+		bsr	DisplayText
+		bra	.l1
+.dsknum		lea	(Txt1_InsDskNum),a0
+		lea	(xx_CurrentDisk),a1
+		bsr	DisplayText
+
 .l1		bsr	WaitIMSG
 		cmp.b	#IMSG_CLOSEWINDOW,d0
 		beq.b	SM_Exit
@@ -183,94 +199,80 @@ SM_Error:	; Error occured, print errormessage and wait for CLOSEWINDOW
 		cmp.b	#IERR_NOTRACK,d0
 		bne.b	.nn
 		lea	Txt1_TLT(pc),a0
-		bra	.wait1
+		lea	(xx_CurrentTrack),a1
+		bra	.display
 .nn
 		cmp.b	#IERR_TRACKLIST,d0
 		bne.b	.n0
 		lea	Txt1_TLI(pc),a0
-		bra	.wait1
+		bra	.display
 .n0
 		cmp.b	#IERR_VERSION,d0
 		bne.b	.n1
 		lea	Txt1_UV(pc),a0
-		bra	.wait1
+		bra	.display
 .n1
 		cmp.b	#IERR_FLAGS,d0
 		bne.b	.n2
 		lea	Txt1_UF(pc),a0
-		bra.b	.wait1
+		bra.b	.display
 .n2
 		cmp.b	#IERR_OUTOFMEM,d0
 		bne.b	.n3
 		lea	Txt1_OOM(pc),a0
-		bra.b	.wait1
+		bra.b	.display
 .n3
 		cmp.b	#IERR_CHECKSUM,d0
 		bne.b	.n4
-		move.w	xx_CurrentTrack(pc),d0
 		lea	Txt1_CE(pc),a0
-		bra.b	.waitnp
+		lea	xx_CurrentTrack(pc),a1
+		bra.b	.display
 .n4
 		cmp.b	#IERR_NOSYNC,d0
 		bne.b	.n5
-		move.w	xx_CurrentTrack(pc),d0
 		lea	Txt1_SE(pc),a0
-		bra.b	.waitnp
+		lea	xx_CurrentTrack(pc),a1
+		bra.b	.display
 .n5
 		cmp.b	#IERR_NOSECTOR,d0
 		bne.b	.n6
-		move.w	xx_CurrentTrack(pc),d0
 		lea	Txt1_SM(pc),a0
-		bra.b	.waitnp
+		move.w	xx_CurrentTrack(pc),a1
+		bra.b	.display
 .n6
 		cmp.b	#IERR_NODISK,d0
 		bne.b	.n7
 		lea	Txt1_ND(pc),a0
-		bsr	Txt1_1
+		bsr	DisplayText
 		bra.b	SM_Delay
 .n7
 		cmp.b	#IERR_DISKRANGE,d0
 		bne.b	.n8
 		lea	Txt1_OD(pc),a0
-		bra.b	.wait1
+		bra.b	.display
 .n8
 		cmp.b	#IERR_CRCFAIL,d0
 		bne.b	.n9
 		lea	Txt1_NC(pc),a0
-		bra.b	.wait1
+		bra.b	.display
 .n9
 		cmp.b	#IERR_DSKVERSION,d0
 		bne.b	.n10
 		lea	Txt1_UDV(pc),a0
-		bra.b	.wait1
+		bra.b	.display
 .n10
 		cmp.b	#IERR_NOFUNCTION,d0
 		bne.b	.n11
 		lea	Txt1_NF(pc),a0
-		bra.b	.wait1
+		bra.b	.display
 .n11
-		bra.b	.wait
-
-.wait1		bsr	Txt1_1		; display error message
-		bra.b	.wait
-.waitnp		bsr	Txt1_NumPoint	; display error message with number and point at end
-
-;		move.w	d0,-(sp)
-;		move.w	xx_Cancel(pc),d0
-;		tst.w	d0
-;		move.w	(sp)+,d0
-		tst.w	xx_Cancel	;CODETAPPER
-		beq.b	.wait
-.waitsecs
-		move.l	dosbase(pc),a6
-		moveq	#50*2,d1
-		jsr	_LVODelay(a6)
-		bra	SM_Exit
-.wait
-		bsr	WaitIMSG
+.wait		bsr	WaitIMSG
 		cmp.b	#IMSG_CLOSEWINDOW,d0
 		bne.b	.wait
 		bra	SM_Exit
+
+.display	bsr	DisplayText
+		bra	.wait
 
 SM_Finished:	; All disks finished, wait 1 second and exit
 
@@ -285,7 +287,7 @@ SM_Stop:	; Stop button pressed, wait 1 second and restart
 		bsr	Txt1Cancelled
 SM_Delay:
 		move.l	dosbase(pc),a6
-		moveq	#50,d1
+		moveq	#100,d1
 		jsr	_LVODelay(a6)
 		bra	SM_Init
 
@@ -491,8 +493,11 @@ SM_ReadTrack:
 		bsr	RefreshProgressBar
 
 		bsr.b	_ReadTrackCore
-		bsr	OutputDebug
-		tst.l	d0
+		move.l	xx_Debug,d1
+		beq	.nodebug
+		bsr	OutputDebugCRC
+		bra	.nodec
+.nodebug	tst.l	d0
 		bmi.b	.error
 .nodec		moveq	#IERR_OK,d0
 		bsr	_StoreTrackToImage

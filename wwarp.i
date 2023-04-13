@@ -3,7 +3,7 @@
 ;  :Contens.	include file for the WWarp file format
 ;  :Author.	Bert Jahn
 ;  :EMail.	wepl@whdload.de
-;  :Version.	$Id: wwarp.i 1.9 2004/03/16 07:36:23 wepl Exp wepl $
+;  :Version.	$Id: wwarp.i 1.11 2004/11/05 11:38:35 wepl Exp wepl $
 ;  :History.	23.04.02 separated from WWarp.asm
 ;		01.11.02 TF_SLEQ added
 ;		21.12.03 TT_GOLIATH added (Codetapper)
@@ -108,6 +108,9 @@ SYNCLEN		= 16
  EITEM TT_RNCL		;Rob Northen CopyLock ($32 bytes)
  EITEM TT_HITEC		;HiTec format ($180c bytes)
  EITEM TT_MASON		;Mason format ($1600 bytes)
+ EITEM TT_TWILIGHT2	;Twilight format ($1520 bytes)
+ EITEM TT_TWILIGHT3	;Twilight format ($1800 bytes)
+ EITEM TT_RNCLOLD	;standard dos + Rob Northen CopyLock Old (22+$1600 bytes)
 
 TT_CNT = EOFFSET-1	;number of supported custom formats
 

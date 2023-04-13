@@ -1,9 +1,9 @@
 @database RawDIC
-$VER: RawDIC_Guide 2.0
-@node main "RawDIC documentation (16.7.2004)"
+$VER: RawDIC_Guide 3.0
+@node main "RawDIC documentation (17.1.2005)"
 
-			   RawDIC V2.0
-	   © 1999 by John Selck and © 2002-2004 by Codetapper/Wepl
+			   RawDIC V3.0
+	   © 1999 by John Selck and © 2002-2005 by Codetapper/Wepl
 
 			@{" Disclaimer    " link disclaimer}
 			@{" About         " link about}
@@ -26,6 +26,7 @@ $VER: RawDIC_Guide 2.0
 RawDIC is written and copyright © 1999 by @{"John Selck" link contact}
 
 Reading data from input files was added by @{"Codetapper" link contact} in October 2002.
+Several changes and additions by Wepl in 2004-2005.
 
 This program is freely distributable unless no changes
 are made to the archive.
@@ -77,7 +78,7 @@ E-Mail: codetapper@whdload.de
 @endnode
 @node tooltypes "ToolTypes"
 
-For external control of RawDIC there are some ToolTypes defined:
+For external control of RawDIC there are some command line arguments defined:
 
 SLAVE={filename}	Defines the path where the ISlave can be found.
 
@@ -152,6 +153,11 @@ behaviour when reading a disk.
 	FPTR	dsk_InitCode
 	FPTR	dsk_DiskCode
 
+The following entries are valid on version 2+. To get used by RawDIC
+dsk_Version must be at least set to 2.
+
+	APTR	dsk_DiskName
+
 dsk_NextDisk:	Pointer to the next Disk-structure or 0 when this is the last
 		disk.
 
@@ -184,6 +190,9 @@ dsk_DiskCode:	Pointer to code which is called AFTER the disk image is
 		created. Here you may save files. 0 when no DiskCode is
 		needed.
 
+dsk_DiskName:	Pointer to a string which is the name of the disk which
+		should be inserted by the user. This is used by RawDIC for
+		the 'Insert Disk' request only.
 Example:
 
 	dc.l	0		; This is the last disk.
@@ -720,6 +729,12 @@ WWarp:		A disk imaging format written by Wepl which stores tracks
 
 @endnode
 @node history "History"
+
+3.0	Released on 17.1.2005
+	(Wepl) debug output also if no disk matches with crc
+	(Wepl) support for trackdisk accesses upto cylinder 81
+	(Wepl) disk name can be provided in text by the slave
+	(Wepl) some cleanup for text formatting
 
 2.2	Released on 30.7.2004
 	(Wepl) SelectFile button could crash, rewritten file requester

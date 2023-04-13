@@ -96,8 +96,7 @@ GL	EQUR	A4		;a4 ptr to Globals
 
 InputFromFile	move.l	#BUFFER_EMPTY,xx_BufferType	;Mark the buffer as empty
 
-		move.l	xx_InputName(pc),a0		;If there is no filename to read from, don't bother doing anything
-		tst.b	(a0)
+		move.l	xx_InputName(pc),d0		;If there is no filename to read from, don't bother doing anything
 		beq	.NoReadFromFile
 
 		move.l	xx_CurrentDecoder(pc),d0	;Work out if we should accept AmigaDos decoded or MFM data (or both)
@@ -835,11 +834,8 @@ OpenReadFrom	moveq	#IERR_OK,d0
 
 		bsr	ClearOffsets
 
-		move.l	xx_InputName(pc),a0
-;		lea	readFromNameBuffer,a0
-		tst.b	(a0)
+		move.l	xx_InputName(pc),d1
 		beq	.OpenErr		;//REMOVE .ReadFromNotFound
-		move.l	a0,d1
 		move.l	#MODE_OLDFILE,d2
 		move.l	dosbase(pc),a6
 		jsr	_LVOOpen(a6)
