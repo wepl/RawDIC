@@ -1,8 +1,8 @@
 @database RawDIC
-$VER: RawDIC_Guide 3.0
+$VER: RawDIC_Guide 3.1
 @node main "RawDIC documentation (17.1.2005)"
 
-			   RawDIC V3.0
+			   RawDIC V3.1
 	   © 1999 by John Selck and © 2002-2005 by Codetapper/Wepl
 
 			@{" Disclaimer    " link disclaimer}
@@ -729,6 +729,9 @@ WWarp:		A disk imaging format written by Wepl which stores tracks
 
 @endnode
 @node history "History"
+
+3.1	Released on 21.1.2005
+	(Wepl) some fixes, window width enlarged by 80 pixel
 
 3.0	Released on 17.1.2005
 	(Wepl) debug output also if no disk matches with crc

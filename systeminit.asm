@@ -722,10 +722,13 @@ _FormatString	movem.l	d0-d1/a0-a3/a6,-(a7)
 ; OUT:	-
 
 DisplayText	bsr.b	Txt1_CLR
-		movem.l	a2/a6,-(a7)
+
+		movem.l	d2-d3/a2-a4/a6,-(a7)
+
 		move.l	#TXT1BUFFERLEN,d0
 		lea	(Txt1Buffer),a2
 		bsr	_FormatString
+
 		move.l	gfxbase(pc),a6
 		move.l	WinRastPort(pc),a1
 		moveq	#2,d0
@@ -733,6 +736,7 @@ DisplayText	bsr.b	Txt1_CLR
 		move.l	WinRastPort(pc),a1
 		moveq	#4,d0
 		jsr	_LVOSetBPen(a6)
+
 		moveq	#4,d0
 		moveq	#1,d1
 		move.l	TextDisplay1(pc),a0
@@ -742,40 +746,32 @@ DisplayText	bsr.b	Txt1_CLR
 		add.w	tf_YSize(a0),d1
 		move.l	WinRastPort(pc),a1
 		jsr	_LVOMove(a6)
-		lea	Txt1Buffer(pc),a0
+
+		lea	Txt1Buffer(pc),a0	;string
 		move.l	a0,a1
 		moveq	#-1,d0
-.cnt		addq.l	#1,d0
+.cnt		addq.l	#1,d0			;strLen
 		tst.b	(a1)+
 		bne	.cnt
-		move.l	WinRastPort(pc),a1
-		jsr	_LVOText(a6)
+		move.l	WinRastPort(pc),a1	;rastport
+		sub.l	#te_SIZEOF,a7
+		move.l	a7,a2			;textExtent
+		sub.l	a3,a3			;constrainingExtent
+		moveq	#1,d1			;strDirection
+		move.l	(TextDisplay1),a4
+		move.w	(ty_Width,a4),d2	;constrainingBitWidth
+		subq.w	#6,d2
+		move.w	(ty_Height,a4),d3	;constrainingBitHeight
+		jsr	(_LVOTextFit,a6)
+		add.l	#te_SIZEOF,a7
+
+		lea	Txt1Buffer(pc),a0	;string
+		move.l	WinRastPort(pc),a1	;rastport
+		jsr	(_LVOText,a6)
+
 		movem.l	(a7)+,_MOVEMREGS
 		rts
 
-PrintOnTextDisplay1:
-		bsr.b	Txt1_CLR
-PrintOnTextDisplay1_noclr:
-		movem.l	d0-d7/a0-a6,-(sp)
-		move.l	gfxbase(pc),a6
-		move.l	WinRastPort(pc),a1
-		moveq	#2,d0
-		jsr	_LVOSetAPen(a6)
-		moveq	#4,d0
-		jsr	_LVOSetBPen(a6)
-		moveq	#4,d0
-		moveq	#1,d1
-		move.l	TextDisplay1(pc),a0
-		add.w	ty_LeftEdge(a0),d0
-		add.w	ty_TopEdge(a0),d1
-		move.l	textfontrp(pc),a0
-		add.w	tf_YSize(a0),d1
-		jsr	_LVOMove(a6)
-		moveq	#32,d0
-		lea	Txt1Buffer(pc),a0
-		jsr	_LVOText(a6)
-		movem.l	(sp)+,d0-d7/a0-a6
-		rts
 Txt1_CLR:
 		movem.l	a0-a1,-(sp)
 		move.l	TextDisplay1(pc),a0
@@ -808,7 +804,7 @@ Txt1_F:		dc.b	"Finished.",0
 Txt1_INP_OPEN:	dc.b	"Input file would not open",0
 Txt1_INP_SEEK:	dc.b	"Input file seek error",0
 Txt1_INP_READ:	dc.b	"Input file read error",0
-Txt1_INP_NOTRK:	dc.b	"Input file does not contain",0
+Txt1_INP_NOTRK:	dc.b	"Input file does not contain track %d",0
 Txt1_INP_BADHD:	dc.b	"Input file has a bad header",0
 Txt1_XPK_DEPACK: dc.b	"MFMWarp XPK depack error",0
 Txt1_MC1_DEPACK: dc.b	"MFMWarp MC1 depack error",0
@@ -824,7 +820,6 @@ Txt1_TABL_UNS:	dc.b	"WWarp table header version unsupported",0
 Txt1_TRCK_UNS:	dc.b	"WWarp track header version unsupported",0
 Txt1_TRCK_TYPE:	dc.b	"WWarp track type unsupported",0
 Txt1_TRCK_FLAG:	dc.b	"WWarp track flags unsupported",0
-Txt1_ontrack	dc.b	"%s on track %d.",0
 		cnop	0,2
 
  STRUCTURE Button,0
@@ -1712,18 +1707,16 @@ ParseErrorRequest:
 .s0		move.l	(sp)+,a0
 		rts
 
-ErrorRequest:	movem.l	d1-d7/a0-a6,-(sp)
+ErrorRequest:	movem.l	d0-d7/a0-a6,-(sp)
 		lea	xx_Cancel(pc),a1
 		clr.w	(a1)
-		move.l	d0,-(sp)
 		clr.w	-(a7)
 		move.w	xx_CurrentTrack(pc),-(a7)
-		move.l	a0,-(a7)
-		lea	(Txt1_ontrack),a0
 		move.l	a7,a1
 		lea	Txt1Buffer(pc),a2
 		move.l	#TXT1BUFFERLEN,d0
 		bsr	_FormatString
+		addq.l	#4,a7
 		lea	Txt1Buffer(pc),a0
 		lea	req_Int2(pc),a1
 		move.l	a0,it_IText(a1)
@@ -1743,18 +1736,15 @@ ErrorRequest:	movem.l	d1-d7/a0-a6,-(sp)
 		jsr	_LVOAutoRequest(a6)
 		move.l	d0,d1
 		beq.b	.s0
-		addq.l	#4,sp
-		moveq	#IMSG_Retry,d0
+		move.l	#IMSG_Retry,(a7)
 		bra.b	.s1
 .s0		move.l	xx_Ignore(pc),d0
 		beq.b	.s2
-		addq.l	#4,sp
-		moveq	#IERR_OK,d0
+		move.l	#IERR_OK,(a7)
 		bra.b	.s1
 .s2		lea	xx_Cancel(pc),a0
 		move.w	#1,(a0)
-		move.l	(sp)+,d0
-.s1		movem.l	(sp)+,d1-d7/a0-a6
+.s1		movem.l	(sp)+,d0-d7/a0-a6
 		rts
 
 req_Int0:	dc.b	0
