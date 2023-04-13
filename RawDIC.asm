@@ -2,7 +2,7 @@
 ;  :Program.	RawDIC.asm
 ;  :Contents.	create diskimages using parameter file
 ;  :Author.	Graham, Codetapper, Wepl
-;  :Version	$Id: RawDIC.asm 1.4 2004/07/16 13:47:29 wepl Exp wepl $
+;  :Version	$Id: RawDIC.asm 1.5 2004/07/27 23:59:09 wepl Exp wepl $
 ;  :History.	xx.xx.xx initial work upto v1.7 done by Graham
 ;		xx.xx.xx enhancements for reading from file done by Codetapper
 ;		16.07.04 cleanup, repacking (Wepl)
@@ -14,7 +14,7 @@
 ;---------------------------------------------------------------------------*
 
 Version		= 2
-Revision	= 0
+Revision	= 1
 
 	; the IMSG tags are used to define certain signals in the program
 	; i.e. a pressed button or a failure while reading a track
@@ -83,7 +83,7 @@ DFLG_DOUBLEINC2	equ	DFLG_DOUBLEINC&(~DFLG_NORESTRICTIONS)
 		dc.b	"] "
 		INCBIN	"T:date"
 		dc.b	0
-		dc.b	"$Id: RawDIC.asm 1.4 2004/07/16 13:47:29 wepl Exp wepl $",0
+		dc.b	"$Id: RawDIC.asm 1.5 2004/07/27 23:59:09 wepl Exp wepl $",0
 	EVEN
 
 main:
@@ -118,7 +118,8 @@ SM_Init:
 		moveq	#IERR_FLAGS,d0
 		bra	SM_Error
 .fok
-	;	bsr	OpenDebug
+		btst	#0,(slv_Flags,a0)
+		sne	xx_Debug
 
 		lea	xx_Stack(pc),a0
 		move.l	sp,(a0)			; save stack to exit
@@ -167,7 +168,6 @@ SM_NextDisk:
 
 SM_Exit:	; State Machine is in endstate
 
-		bsr	CloseDebug
 		rts
 
 SM_Error:	; Error occured, print errormessage and wait for CLOSEWINDOW
@@ -281,7 +281,6 @@ SM_Finished:	; All disks finished, wait 1 second and exit
 
 SM_Stop:	; Stop button pressed, wait 1 second and restart
 
-		bsr	CloseDebug
 		bsr	Txt1Cancelled
 SM_Delay:
 		move.l	dosbase(pc),a6
@@ -290,7 +289,6 @@ SM_Delay:
 		bra	SM_Init
 
 SM_Start:	; Start button pressed, start reading disk x
-		bsr	OpenDebug
 
 		move.l	TextDisplay1(pc),a0
 		move.l	winptr(pc),a1
@@ -612,10 +610,7 @@ _Call:		beq.b	.s0
 .s0		moveq	#IERR_OK,d0
 		rts
 
-xx_ToolTypes:	dc.l	0		; tooltypes
 xx_Stack:	dc.l	0		; save stack
-xx_SourceName:	dc.l	DefaultSource	; pointer to "DF0:"
-xx_SlaveName:	dc.l	DefaultSlave	; pointer to the name of the imager slave
 xx_Slave:	dc.l	0		; BCPL (!) pointer to the imager slave
 xx_SlvStruct:	dc.l	0		; pointer to the slave structure
 xx_Text:	dc.l	0		; pointer to the short info text
@@ -648,12 +643,17 @@ xx_FLPosition:	dc.l	0		; pointer to a filelist entry
 xx_ExternalCall: dc.l	0		; here is the current state for external calls
 xx_DiskFinished: dc.w	0		; 1 when diskimage is completely read
 xx_Cancel:	dc.w	0		; 1 when error exit on Cancel pressed
-xx_Ignore:	dc.w	0		; 1 when IGNOREERRORS is set
 xx_TrackInc:	dc.w	0		; -2 , -1 , 1 , 2
-xx_Debug:	dc.w	0		; 1 when DEBUG is set
 ;xx_ReadFrom:	dc.w	0		; Type of file we are reading from (0 = Disk, 1 = MFMWarp)
-xx_InputName:	dc.l	inputNameBuffer	; Pointer to the name of the input file
 xx_InputNameRT:	dc.l	inputNameReqBuffer	; Pointer to the name of the input file for the ReqTools buffer
+_rdargs		dc.l	0
+_rdarray
+xx_SlaveName:	dc.l	DefaultSlave	; pointer to the name of the imager slave
+xx_Retries_args	dc.l	0		; retries on error
+xx_SourceName:	dc.l	DefaultSource	; pointer to "DF0:"
+xx_InputName:	dc.l	0		; Pointer to the name of the input file
+xx_Ignore:	dc.l	0		; 1 when IGNOREERRORS is set
+xx_Debug:	dc.l	0		; 1 when DEBUG is set
 
 WinMove:	; D0=x-offset/D1=y-offset
 
@@ -807,7 +807,6 @@ RefreshGadgets:	; A0=first gadget
 		rts
 
 	include	slave.asm
-	include	string.asm
 	include	mfmwarpdecruncher.asm
 	include	nomaddecruncher.asm
 	include	xpk.asm
@@ -824,7 +823,6 @@ stringBuffer:
 sourceNameBuffer:	ds.b	$0200
 slaveNameBuffer:	ds.b	$0200		; 512 chars for filename + path should be enough
 
-inputNameBuffer:	ds.b	$0200		; Name for the MFMWarp/NOMADWarp/ADF file 
 inputNameReqBuffer:	ds.b	$0200		; Name for the MFMWarp/NOMADWarp/ADF file 
 			EVEN
 nmd_Buffer:		ds.l	$1200/4		; Decrunch buffer for N.O.M.A.D Warp ($1200 bytes)
@@ -833,3 +831,4 @@ nmd_Buffer:		ds.l	$1200/4		; Decrunch buffer for N.O.M.A.D Warp ($1200 bytes)
 
 ;Space:			ds.b	$6c00
 Space:			ds.b	$7c00		; Codetapper
+

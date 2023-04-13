@@ -721,6 +721,11 @@ WWarp:		A disk imaging format written by Wepl which stores tracks
 @endnode
 @node history "History"
 
+2.1	Released on 28.7.2004
+	(Wepl) using dos.ReadArgs for argument parsing; debug outputs to
+	to stdout instead of extra file; some smaller code due using dos
+	v37 routines
+
 2.0	Released on 16.7.2004
 	(Wepl) cleanup
 

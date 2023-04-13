@@ -9,6 +9,9 @@
 ;		01.02.04 - v1.9 (Codetapper)
 ;		         - Motor on/off commands are skipped if there is 
 ;		           an input file
+;		27.07.04 Wepl
+;			 using dos.ReadArgs(), requires dos v37 now
+;			 DEBUG directly writes to stdout, no extra file anymore
 ; Copyright:	Public Domain
 ; Language:	68000 Assembler
 ; Translator:	Barfly
@@ -18,13 +21,9 @@
 
 ;		include	startupcode.asm
 Start:
-		lea	xx_ToolTypes(pc),a1
-		move.l	a0,(a1)
-		bsr	ParseToolTypes
-
 		move.l	4.w,a6
 
-		moveq	#0,d0
+		moveq	#37,d0
 		lea	dosname(pc),a1
 		jsr	_LVOOpenLibrary(a6)
 		tst.l	d0
@@ -60,20 +59,40 @@ Start:
 		lea	xpkbase(pc),a1
 		move.l	d0,(a1)
 
-		move.l	dosbase(pc),a6
-		jsr	_LVOOutput(a6)
-		lea	output(pc),a0
-		move.l	d0,(a0)
-
-		move.l	xx_SlaveName(pc),d0
-		bne.b	.doit
+	;read arguments
+		lea	_template,a0
+		move.l	a0,d1
+		lea	_rdarray,a0
+		move.l	a0,d2
+		moveq	#0,d3
+		move.l	dosbase,a6
+		jsr	(_LVOReadArgs,a6)
+		move.l	d0,_rdargs
+		bne	.doit
+		jsr	(_LVOIoErr,a6)
+		move.l	d0,d1
 		lea	rawdicInfo(pc),a0
-		bsr	WriteStdOut
-		bra.b	.skip
+		move.l	a0,d2
+		jsr	(_LVOPrintFault,a6)
+		bra	.skip
 .doit
+		move.l	xx_Retries_args,d0
+		beq	.noretries
+		move.l	d0,a0
+		move.w	(2,a0),(xx_Retries)
+.noretries
+		move.l	xx_SourceName(pc),a0
+		bsr	ParseSource
+
 		bsr.b	Next1		; libraries ok, continue...
-.skip
 		bsr	CloseReadFrom		;Close the read from file if there was one
+.skip
+
+	;free arguments
+		move.l	_rdargs,d1
+		move.l	dosbase,a6
+		jsr	(_LVOFreeArgs,a6)
+
 		move.l	4.w,a6
 		move.l	xpkbase(pc),d0
 		beq	.closereq
@@ -599,7 +618,6 @@ xpkbase:	dc.l	0		; xpkmaster.library
 trackbase:	dc.l	0		; trackdisk.device
 textfontrp:	dc.l	0		; TextFont of default font
 slaveseg:	dc.l	0		; slave
-output:		dc.l	0		; output handle
 
 		cnop	0,8
 IORequest:	ds.b	IOSTD_SIZE	; disk io structure
@@ -737,25 +755,6 @@ ConvertWord2Asc:	; A1=Destination
 		movem.l	(sp)+,d0-d1/a0
 		rts
 Dec:		dc.w	10000,1000,100,10,1
-
-ConvertWord2Hex:	; A1=Destination
-		; D0.w=value
-
-		movem.l	d0-d1/a0,-(sp)
-
-		moveq	#3,d2
-.l0		rol.w	#4,d0
-		move.w	d0,d1
-		and.w	#$000f,d1
-		or.w	#"0",d1
-		cmp.w	#"9",d1
-		ble.b	.s0
-		addq.w	#"A"-"9"-1,d1
-.s0		move.b	d1,(a1)+
-		dbra	d2,.l0
-
-		movem.l	(sp)+,d0-d1/a0
-		rts
 
 PrintOnTextDisplay1:
 		bsr.b	Txt1_CLR
@@ -1556,80 +1555,7 @@ ResetDrive:
 		movem.l	(sp)+,d0-d7/a0-a6
 		rts
 
-
-ParseToolTypes:
-		move.l	xx_ToolTypes(pc),a0
-		lea	tt_Source(pc),a1
-		bsr	SearchString
-		move.l	a0,d0
-		beq.b	.n0
-		move.l	a1,a0
-		lea	sourceNameBuffer,a1
-		lea	xx_SourceName(pc),a2
-		move.l	a1,(a2)
-		bsr	CopyFileName
-.n0
-		move.l	xx_SourceName(pc),a0
-		bsr	ParseSource
-
-		lea	xx_SlaveName(pc),a0
-		clr.l	(a0)
-		move.l	xx_ToolTypes(pc),a0
-		lea	tt_Slave(pc),a1
-		bsr	SearchString
-		move.l	a0,d0
-		beq.b	.n1
-		move.l	a1,a0
-		lea	slaveNameBuffer,a1
-		lea	xx_SlaveName(pc),a2
-		move.l	a1,(a2)
-		bsr	CopyFileName
-.n1
-		move.l	xx_ToolTypes(pc),a0
-		lea	tt_Retries(pc),a1
-		bsr	SearchString
-		move.l	a0,d0
-		beq.b	.n2
-		move.l	a1,a0
-		bsr	GetNumber
-		lea	xx_Retries(pc),a0
-		move.w	d0,(a0)
-.n2
-		move.l	xx_ToolTypes(pc),a0
-		lea	tt_Ignore(pc),a1
-		bsr	SearchString
-		move.l	a0,d0
-		sne	d0
-		ext.w	d0
-		lea	xx_Ignore(pc),a0
-		move.w	d0,(a0)		; = 0 when not set
-
-		move.l	xx_ToolTypes(pc),a0
-		lea	tt_Debug(pc),a1
-		bsr	SearchString
-		move.l	a0,d0
-		sne	d0
-		ext.w	d0
-		lea	xx_Debug(pc),a0
-		move.w	d0,(a0)		; = 0 when not set
-
-.n3
-		move.l	xx_ToolTypes(pc),a0	;Check INPUT tooltype to read from a mfmwarp/wwarp/adf file
-		lea	tt_Input(pc),a1
-		bsr	SearchString
-		move.l	a0,d0
-		beq.b	.n4
-		move.l	a1,a0
-		lea	inputNameBuffer,a1
-		lea	xx_InputName(pc),a2
-		move.l	a1,(a2)
-		bsr	CopyFileName
-
-.n4		rts
-
 ParseSource:
-		movem.l	d0-d7/a0-a6,-(sp)
-
 		lea	xx_Unit(pc),a1
 		move.w	#-1,(a1)
 
@@ -1654,125 +1580,34 @@ ParseSource:
 		and.w	#$000f,d1
 		move.w	d1,(a1)
 .exit
-		movem.l	(sp)+,d0-d7/a0-a6
 		rts
 
-tt_Source:	dc.b	"SOURCE=",0
-tt_Slave:	dc.b	"SLAVE=",0
-tt_Retries:	dc.b	"RETRIES=",0
-tt_Input:	dc.b	"INPUT=",0
-tt_Debug:	dc.b	"DEBUG",0
-tt_Ignore:	dc.b	"IGNOREERRORS",0
-		cnop	0,2
-
-
-OpenDebug:
-
-		movem.l	d0-d7/a0-a6,-(sp)
-
-		move.w	xx_Debug(pc),d0		;If DEBUG tooltype set, open
-		bne	.debugon		;the debug file
-
-		move.l	xx_SlvStruct(pc),a0
-		move.b	slv_Flags(a0),d0
-		and.b	#SFLG_DEBUG,d0
-		beq.b	.s0
-
-.debugon	move.l	xx_DebugCRC(pc),d1
-		bne.b	.s0
-
-		move.l	dosbase(pc),a6
-		lea	name_crc(pc),a0
-		move.l	a0,d1
-		move.l	#MODE_NEWFILE,d2
-		jsr	_LVOOpen(a6)
-		lea	xx_DebugCRC(pc),a0
-		move.l	d0,(a0)
-		move.l	d0,d1
-		beq.b	.s0
-
-		lea	text_crc(pc),a0
-		move.l	a0,d2
-		moveq	#text_crc_x-text_crc,d3
-		jsr	_LVOWrite(a6)
-.s0
-		movem.l	(sp)+,d0-d7/a0-a6
-		rts
-CloseDebug:
-		movem.l	d0-d7/a0-a6,-(sp)
-		move.l	dosbase(pc),a6
-		move.l	xx_DebugCRC(pc),d1
-		beq.b	.s0
-		jsr	_LVOClose(a6)
-		lea	xx_DebugCRC(pc),a0
-		clr.l	(a0)
-.s0		movem.l	(sp)+,d0-d7/a0-a6
-		rts
 OutputDebug:
-		movem.l	d0-d7/a0-a6,-(sp)
+		movem.l	d0/d2/a6,-(sp)
 
-		move.l	xx_DebugCRC(pc),d1
+		move.l	xx_Debug(pc),d1
 		beq.b	.s0
 
-		move.l	d0,-(sp)
-
-		bsr	_GetDiskName
-		lea	stringBuffer,a1
-		move.l	a1,a2
-		lea	_DIname(pc),a0
-		bsr	CopyCString
-		lea	text_track(pc),a0
-		bsr	CopyCString
-		move.w	xx_CurrentTrack(pc),d0
-		bsr	ConvertWord2Asc
-		lea	text_c(pc),a0
-		bsr	CopyCString
 		bsr	_TrackCRC16
-		bsr	ConvertWord2Hex
-		lea	text_e(pc),a0
-		bsr	CopyCString
-		move.l	(sp)+,d0
-		bpl.b	.s1
-		neg.l	d0
-		move.b	#"-",(a1)+
-.s1		bsr	ConvertWord2Asc
-		move.b	#10,(a1)+
-		sub.l	a2,a1
-		move.l	dosbase(pc),a6
-		move.l	xx_DebugCRC(pc),d1
-		move.l	a2,d2
-		move.l	a1,d3
-		jsr	_LVOWrite(a6)
+		move.w	d0,-(a7)
+		move.w	xx_CurrentTrack(pc),-(a7)
+		bsr	_GetDiskName
+		pea	_DIname
+		lea	.fmt,a0
+		move.l	a0,d1
+		move.l	a7,d2
+		move.l	dosbase,a6
+		jsr	(_LVOVPrintf,a6)
+		add.w	#8,a7
 
-		movem.l	(sp)+,d0-d7/a0-a6
+		movem.l	(sp)+,_MOVEMREGS
 		moveq	#IERR_OK,d0		; destroy tle_Decoder errorcode
 		rts
-.s0		movem.l	(sp)+,d0-d7/a0-a6
-		rts
-OutputDebug2:
-		movem.l	d0-d7/a0-a6,-(sp)
 
-		move.l	xx_DebugCRC(pc),d1
-		beq.b	.s0
-
-		move.l	dosbase(pc),a6
-		move.l	xx_DebugCRC(pc),d1
-		lea	name_crc(pc),a0
-		move.l	a0,d2
-		moveq	#1,d3
-		jsr	_LVOWrite(a6)
-.s0
-		movem.l	(sp)+,d0-d7/a0-a6
+.s0		movem.l	(sp)+,_MOVEMREGS
 		rts
 
-xx_DebugCRC:	dc.l	0	; filehandle of ".RawDIC_CRC16"
-
-name_crc:	dc.b	".RawDIC_Debug",0
-text_crc:	dc.b	"RawDIC CRC16 Debug:",10,10
-text_crc_x:
-text_track:	dc.b	" Track.",0
-text_c:		dc.b	" CRC16: $",0
-text_e:		dc.b	" Error: ",0
+.fmt		dc.b	"%s Track.%d CRC16.%04x Error.%d",10,0
 
 txt2_noslv:	dc.b	"Could not open slave!",10,0
 txt2_nowin:	dc.b	"Could not open Window!",10,0
@@ -1780,23 +1615,15 @@ txt2_noport:	dc.b	"Could not open Message Port!",10,0
 txt2_nodev:	dc.b	"Could not open trackdisk.device!",10,0
 rawdicInfo:	sprintx	"RawDIC V%ld.%ld ",Version,Revision
 		INCBIN	"T:date"
-		dc.b	" © 1999 by John Selck, © 2002-2004 by Codetapper/Wepl",10,10
-		dc.b	"Usage: RawDIC SLAVE={slave} [RETRIES={retries}] [SOURCE={source}] [INPUT={inputfile}] [IGNOREERRORS] [DEBUG]",10,10,0
+		dc.b	" ©1999 by John Selck, ©2002-2004 by Codetapper/Wepl",10,0
+_template	dc.b	"Slave,Retries/K/N,Source/K,Input/K,IgnoreErrors/S,Debug/S",0
 		cnop	0,2
 WriteStdOut:
-		movem.l	d0-d7/a0-a6,-(sp)
-
-		move.l	output(pc),d1
-		move.l	a0,d2
-.l0		tst.b	(a0)+
-		bne.b	.l0
-		move.l	a0,d3
-		sub.l	d2,d3
-		subq.l	#1,d3
+		move.l	a6,-(a7)
+		move.l	a0,d1
 		move.l	dosbase(pc),a6
-		jsr	_LVOWrite(a6)
-
-		movem.l	(sp)+,d0-d7/a0-a6
+		jsr	(_LVOPutStr,a6)
+		move.l	(a7)+,a6
 		rts
 
 ParseErrorRequest:
@@ -1902,7 +1729,7 @@ ErrorRequest:	movem.l	d1-d7/a0-a6,-(sp)
 		lea	req_Int0(pc),a2
 		lea	req_Int1(pc),a3
 		lea	req_Txt1(pc),a4
-		move.w	xx_Ignore(pc),d0
+		move.l	xx_Ignore(pc),d0
 		beq.b	.s6
 		lea	req_Txt1i(pc),a4
 .s6		move.l	a4,it_IText(a3)
@@ -1918,7 +1745,7 @@ ErrorRequest:	movem.l	d1-d7/a0-a6,-(sp)
 		addq.l	#4,sp
 		moveq	#IMSG_Retry,d0
 		bra.b	.s1
-.s0		move.w	xx_Ignore(pc),d0
+.s0		move.l	xx_Ignore(pc),d0
 		beq.b	.s2
 		addq.l	#4,sp
 		moveq	#IERR_OK,d0
