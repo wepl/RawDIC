@@ -1,8 +1,8 @@
 @database RawDIC
-$VER: RawDIC_Guide 4.0
-@node main "RawDIC documentation (24.4.2005)"
+$VER: RawDIC_Guide 4.1
+@node main "RawDIC documentation (25.5.2005)"
 
-			   RawDIC V4.0
+			   RawDIC V4.1
 	   © 1999 by John Selck and © 2002-2005 by Codetapper/Wepl/JOTD
 
 			@{" Disclaimer    " link disclaimer}
@@ -755,6 +755,10 @@ WWarp:		A disk imaging format written by Wepl which stores tracks
 
 @endnode
 @node history "History"
+
+4.1	Released on 25.5.2005
+	(Wepl) better error handling
+	(Wepl) reuse of asl requester structure
 
 4.0     Released on 24.4.2005
         (JOTD) removed all warp read code, now supported by trackwarp.library

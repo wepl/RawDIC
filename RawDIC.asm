@@ -2,7 +2,7 @@
 ;  :Program.	RawDIC.asm
 ;  :Contents.	create diskimages using parameter file
 ;  :Author.	Graham, Codetapper, Wepl
-;  :Version	$Id: RawDIC.asm 1.12 2005/04/26 23:30:58 wepl Exp wepl $
+;  :Version	$Id: RawDIC.asm 1.13 2005/05/26 18:32:31 wepl Exp wepl $
 ;  :History.	xx.xx.xx initial work upto v1.7 done by Graham
 ;		xx.xx.xx enhancements for reading from file done by Codetapper
 ;		16.07.04 cleanup, repacking (Wepl)
@@ -17,6 +17,8 @@
 ;                        cleanup, better error handling
 ;                        no retries if file is selected
 ;                        "Select File" button sensitivity management added
+;		25.05.05 Wepl
+;			 version bumped to 4.1
 ;
 ;  :Requires.	OS V37+, MC68000+
 ;  :Copyright.	?
@@ -26,7 +28,7 @@
 ;---------------------------------------------------------------------------*
 
 Version		= 4
-Revision	= 0
+Revision	= 1
 
 	; the IMSG tags are used to define certain signals in the program
 	; i.e. a pressed button or a failure while reading a track
@@ -97,7 +99,7 @@ DFLG_DOUBLEINC2	equ	DFLG_DOUBLEINC&(~DFLG_NORESTRICTIONS)
 		dc.b	"] "
 		INCBIN	"T:date"
 		dc.b	0
-		dc.b	"$Id: RawDIC.asm 1.12 2005/04/26 23:30:58 wepl Exp wepl $",0
+		dc.b	"$Id: RawDIC.asm 1.13 2005/05/26 18:32:31 wepl Exp wepl $",0
 	EVEN
 
 main:
@@ -667,7 +669,7 @@ xx_Track:	dc.l	0		; pointer to thme trackbuffer
 xx_TrackLen:	dc.l	0		; length of the trackbuffer (greatest tracklength)
 xx_CurrentTLen:	dc.l	0		; length of the current track
 xx_TLPosition:	dc.l	0		; pointer to a tracklist entry
-xx_Unit:	dc.w	0		; trackdisk device unit
+xx_Unit:	dc.l	0		; trackdisk device unit
 xx_Retry:	dc.w	0		; retry counter for read errors
 xx_Retries:	dc.w	5		; retries on error
 xx_CurrentTrack: dc.w	0		; current track
@@ -681,7 +683,6 @@ xx_ExternalCall: dc.l	0		; here is the current state for external calls
 xx_DiskFinished: dc.w	0		; 1 when diskimage is completely read
 xx_Cancel:	dc.w	0		; 1 when error exit on Cancel pressed
 xx_TrackInc:	dc.w	0		; -2 , -1 , 1 , 2
-;xx_ReadFrom:	dc.w	0		; Type of file we are reading from (0 = Disk, 1 = MFMWarp)
 _rdargs		dc.l	0
 _rdarray
 xx_SlaveName:	dc.l	DefaultSlave	; pointer to the name of the imager slave
@@ -809,7 +810,7 @@ GetIMSG:	; gets an action
 GetIMSG_end
 		OFF_BUTTON	Start
 		OFF_BUTTON	Stop
-		OFF_BUTTON	SelectFile
+	;	OFF_BUTTON	SelectFile
 
 		movem.l	(sp)+,d1-d7/a0-a6
 		rts
@@ -843,8 +844,8 @@ RefreshGadgets:	; A0=first gadget
 BUFFERLENGTH	= $7c00
 RTFILENAMELEN	= 108
 RTDIRNAMELEN	= 512
-rtfilename		ds.b	RTFILENAMELEN	; filename buffer for reqtools
-rtdirname		ds.b	RTDIRNAMELEN	; dirname buffer for reqtools
+rtfilename		ds.b	RTFILENAMELEN	; filename buffer for aslreq
+rtdirname		ds.b	RTDIRNAMELEN	; dirname buffer for aslreq
 rtname			ds.b	RTFILENAMELEN+RTDIRNAMELEN
 			ds.w	4		; space for 4 syncs
 Buffer:			ds.b	BUFFERLENGTH

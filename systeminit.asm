@@ -23,7 +23,12 @@
 ;			 added support for trackwarp.library
 ;                        removed useless XPK & MFM error messages
 ;                        drive seek skipped if there is an input file
-;
+;		25.05.05 Wepl
+;			 versions to all OpenLibrary calls added
+;			 some cleanup in Start:
+;			 ParseSource fixed
+;			 error handling for OpenSlave/OpenDevice added
+;			 closing aslreq added
 ; Copyright:	Public Domain
 ; Language:	68000 Assembler
 ; Translator:	Barfly
@@ -43,7 +48,7 @@ Start:
 		lea	dosbase(pc),a1
 		move.l	d0,(a1)
 
-		moveq	#0,d0
+		moveq	#37,d0
 		lea	intname(pc),a1
 		jsr	_LVOOpenLibrary(a6)
 		tst.l	d0
@@ -51,25 +56,26 @@ Start:
 		lea	intbase(pc),a1
 		move.l	d0,(a1)
 
-		moveq	#0,d0
+		moveq	#37,d0
 		lea	gfxname(pc),a1
 		jsr	_LVOOpenLibrary(a6)
 		lea	gfxbase(pc),a1
 		move.l	d0,(a1)
 		beq.b	.nogfx
 
-		moveq	#0,d0			; JOTD
-		lea	aslname(pc),a1
-		jsr	_LVOOpenLibrary(a6)
-		lea	aslbase(pc),a1
-		move.l	d0,(a1)
-
-		moveq	#0,d0			; JOTD
+		moveq	#1,d0
 		lea	twname(pc),a1
 		jsr	_LVOOpenLibrary(a6)
 		lea	twbase(pc),a1
 		move.l	d0,(a1)
+		beq	.noasl			;without trackwarp we dont need asl
 
+		moveq	#36,d0
+		lea	aslname(pc),a1
+		jsr	_LVOOpenLibrary(a6)
+		lea	aslbase(pc),a1
+		move.l	d0,(a1)
+.noasl
 	;read arguments
 		lea	_template,a0
 		move.l	a0,d1
@@ -79,63 +85,65 @@ Start:
 		move.l	dosbase,a6
 		jsr	(_LVOReadArgs,a6)
 		move.l	d0,_rdargs
-		bne	.doit
+		bne	.argsok
 		jsr	(_LVOIoErr,a6)
 		move.l	d0,d1
 		lea	rawdicInfo(pc),a0
 		move.l	a0,d2
 		jsr	(_LVOPrintFault,a6)
-		bra	.skip
-.doit
+		bra	.noargs
+.argsok
 		move.l	xx_Retries_args,d0
 		beq	.noretries
 		move.l	d0,a0
 		move.w	(2,a0),(xx_Retries)
 .noretries
-		move.l	xx_SourceName(pc),a0
 		bsr	ParseSource
 
-		bsr.b	Next1		; libraries ok, continue...
-		bsr	CloseReadFrom		;Close the read from file if there was one
-.skip
+		bsr	OpenSlave
+		beq	.noslv
+		bsr	CreatePort
+		beq	.noport
+		bsr	OpenDevice
+		bne	.nodev
+		bsr	OpenMainWindow
+		beq	.nowindow
+		bsr	main
+		bsr	CloseMainWindow
+.nowindow	bsr	CloseDevice
+.nodev		bsr	DeletePort
+.noport		bsr	CloseSlave
+.noslv		bsr	CloseReadFrom		;Close the read from file if there was one
 
 	;free arguments
 		move.l	_rdargs,d1
 		move.l	dosbase,a6
 		jsr	(_LVOFreeArgs,a6)
-
-		move.l	4.w,a6
+.noargs
 		move.l	twbase(pc),d0
-		beq	.closeasl
+		beq	.notw
 		move.l	d0,a1
+		move.l	4.w,a6
 		jsr	_LVOCloseLibrary(a6)
-.closeasl	move.l	aslbase(pc),d0
+.notw		move.l	aslreq,d0
+		beq	.noaslreq
+		move.l	d0,a0
+		move.l	aslbase,a6
+		jsr	(_LVOFreeAslRequest,a6)
+.noaslreq	move.l	aslbase(pc),d0
 		beq	.closegfx
 		move.l	d0,a1
+		move.l	4,a6
 		jsr	_LVOCloseLibrary(a6)
 .closegfx	move.l	gfxbase(pc),a1
+		move.l	4,a6
 		jsr	_LVOCloseLibrary(a6)
 .nogfx		move.l	intbase(pc),a1
 		jsr	_LVOCloseLibrary(a6)
 .noint		move.l	dosbase(pc),a1
 		jsr	_LVOCloseLibrary(a6)
-.nodos		rts
-
-Next1:
-		bsr	OpenSlave
-		beq.b	.noslv
-		bsr.b	CreatePort
-		beq.b	.noport
-		bsr	OpenDevice
-		bne.b	.nodev
-		bsr	OpenMainWindow
-		beq.b	.nowindow
-		bsr	main
-		bsr	CloseMainWindow
-.nowindow	bsr	CloseDevice
-.nodev		bsr.b	DeletePort
-.noport		bsr	CloseSlave
-.noslv		rts
+.nodos		moveq	#0,d0
+		rts
 
 CreatePort:
 		move.l	4.w,a6
@@ -187,9 +195,8 @@ DeletePort:
 
 OpenDevice:
 		move.l	4.w,a6
-		moveq	#0,d0
-		move.w	xx_Unit(pc),d0		; device #
-		moveq	#TDB_ALLOW_NON_3_5,d1			; flags
+		move.l	xx_Unit(pc),d0			; device #
+		moveq	#TDB_ALLOW_NON_3_5,d1		; flags
 		lea	trackdiskname(pc),a0
 		lea	IORequest(pc),a1
 		jsr	_LVOOpenDevice(a6)
@@ -197,6 +204,7 @@ OpenDevice:
 		beq.b	.ok
 		lea	txt2_nodev(pc),a0
 		bsr	WriteStdOut
+		moveq	#-1,d0
 .ok		tst.l	d0
 		rts
 
@@ -581,31 +589,29 @@ OpenSlave:
 		jsr	_LVOLoadSeg(a6)
 		lea	xx_Slave(pc),a0
 		move.l	d0,(a0)
+		beq	.noslv
 		lsl.l	#2,d0
 		addq.l	#8,d0
 		move.l	d0,a0
-		move.l	(a0)+,d0
-		cmp.l	#"RAWD",d0	; header test
+		cmp.l	#"RAWD",(a0)+		; header test
 		bne.b	.error
-		move.w	(a0)+,d0
-		cmp.w	#"IC",d0
+		cmp.w	#"IC",(a0)+
 		bne.b	.error
 		move.l	a0,d0
 		lea	xx_SlvStruct(pc),a0
 		move.l	d0,(a0)
-		move.l	xx_Slave(pc),d0
 		rts
 .error		bsr.b	CloseSlave
-		lea	txt2_noslv(pc),a0
+.noslv		lea	txt2_noslv(pc),a0
 		bsr	WriteStdOut
-		lea	xx_Slave(pc),a0
-		clr.l	(a0)
 		moveq	#0,d0
 		rts
 CloseSlave:
-		move.l	dosbase(pc),a6
-		move.l	xx_Slave(pc),d1
+		lea	xx_Slave(pc),a0
+		move.l	(a0),d1
 		beq.b	.no
+		clr.l	(a0)
+		move.l	dosbase(pc),a6
 		jsr	_LVOUnLoadSeg(a6)
 .no		rts
 
@@ -625,6 +631,7 @@ dosbase:	dc.l	0		; dos.library
 intbase:	dc.l	0		; intuition.library
 gfxbase:	dc.l	0		; graphics.library
 aslbase:	dc.l	0		; asl.library
+aslreq:		dc.l	0		; request structure from asl.library
 twbase:		dc.l	0		; trackwarp.library
 trackbase:	dc.l	0		; trackdisk.device
 textfontrp:	dc.l	0		; TextFont of default font
@@ -1563,31 +1570,43 @@ ResetDrive:
 		move.l	#IERR_NODISK,d0
 		bra.b	.rts
 
-ParseSource:
-		lea	xx_Unit(pc),a1
-		move.w	#-1,(a1)
+ParseSource:	moveq	#-1,d1
 
+		move.l	xx_SourceName(pc),d0
+		beq	.exit
+		move.l	d0,a0
+		
 		move.b	(a0)+,d0
-		and.b	#$df,d0
+		beq	.exit
 		cmp.b	#"D",d0
-		bne.b	.exit
+		beq	.d
+		cmp.b	#"d",d0
+		bne	.exit
+.d
 		move.b	(a0)+,d0
-		and.b	#$df,d0
+		beq	.exit
 		cmp.b	#"F",d0
-		bne.b	.exit
-		move.b	(a0)+,d1
-		cmp.b	#"0",d1
-		blo.b	.exit
-		cmp.b	#"3",d1
-		bhi.b	.exit
+		beq	.f
+		cmp.b	#"f",d0
+		bne	.exit
+.f
 		move.b	(a0)+,d0
-		cmp.b	#":",d0
-		bne.b	.exit
-		move.b	(a0)+,d0
-		bne.b	.exit
-		and.w	#$000f,d1
-		move.w	d1,(a1)
+		beq	.exit
+		cmp.b	#"0",d0
+		blo	.exit
+		cmp.b	#"3",d0
+		bhi	.exit
+
+		cmp.b	#":",(a0)+
+		bne	.exit
+		tst.b	(a0)
+		bne	.exit
+		
+		and.l	#3,d0
+		move.l	d0,d1
 .exit
+		lea	xx_Unit(pc),a0
+		move.l	d1,(a0)
 		rts
 
 OutputDebugCRC	bsr	_TrackCRC16

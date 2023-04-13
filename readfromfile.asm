@@ -23,15 +23,17 @@
 ;		30.07.04 Wepl
 ;			 - requester handling rewritten, remember last file
 ;			   in env "RawDIC.InputFile"
-;               24.04.05 JOTD
-;                        - removed all specific MFM code to replace by direct
-;                          trackwarp.library support
-;                        - replaced reqtools.library by asl.library
+;		24.04.05 JOTD
+;			 - removed all specific MFM code to replace by direct
+;			   trackwarp.library support
+;			 - replaced reqtools.library by asl.library
 ;		27.04.05 Wepl
 ;			 - asl-lvo's removed
-;			 - twInfo removed, tries twReadForm if allowed aand twReadRaw afterwards
+;			 - twInfo removed, tries twReadForm if allowed and twReadRaw afterwards
 ;			 - cleanup
 ;
+;		26.05.05 Wepl
+;			 - RequestAFile reworked
 ; Copyright:	Public Domain
 ; Language:	68000 Assembler
 ; Translator:	Barfly
@@ -173,34 +175,35 @@ CloseReadFrom	movem.l	d0-d1/a0-a6,-(sp)
 
 RequestAFile	movem.l	d0-d4/d7/a2-a3/a6,-(sp)
 
+		bsr	CloseReadFrom
+
 		move.l	aslbase(pc),d0
 		beq	.norequester
-		move.l	d0,a6			;a6 = reqbase
+		move.l	d0,a6			;a6 = aslbase
 
-		move.l	#ASL_FileRequest,d0		;mode
+		move.l	aslreq,d7		;d7 = filereq
+		bne	.req2
+
+		move.l	#ASL_FileRequest,d0	;mode
 		sub.l	a0,a0			;tags
 		jsr	(_LVOAllocAslRequest,a6)
 		move.l	d0,d7			;d7 = filereq
 		beq	.norequester
 
-		cmp.l	#rtname,xx_InputName
-		beq	.alreadyinit
-
-.chkarg		move.l	(xx_InputName),d1
+		move.l	(xx_InputName),d2	;d2 = input name
 		bne	.fromargs
 	;read environment variable
 		lea	.varname,a0
 		move.l	a0,d1
-		move.l	#rtname,d2		;buffer
+		move.l	#rtname,d2		;buffer = d2 = input name
 		move.l	#RTDIRNAMELEN+RTFILENAMELEN,d3	;length
 		moveq	#0,d4			;flags
 		move.l	dosbase,a6
 		jsr	(_LVOGetVar,a6)
 		tst.l	d0
-		bmi	.alreadyinit
-		move.l	#rtname,xx_InputName
-		bra	.chkarg
+		bmi	.req1
 .fromargs
+		move.l	d2,d1
 		move.l	dosbase,a6
 		jsr	(_LVOFilePart,a6)
 		move.l	d0,a0
@@ -209,37 +212,44 @@ RequestAFile	movem.l	d0-d4/d7/a2-a3/a6,-(sp)
 .cpyf		move.b	(a0)+,(a1)+
 		dbeq	d1,.cpyf
 		clr.b	(a1)
-		move.l	(xx_InputName),a0
+		move.l	d2,a0
 		lea	(rtdirname),a1
 		sub.l	a0,d0
 		subq.l	#1,d0
-		bmi	.alreadyinit
+		bmi	.req1
 		cmp.l	#RTDIRNAMELEN-2,d0
 		blo	.cpyd
 		move.w	#RTDIRNAMELEN-2,d0
 .cpyd		move.b	(a0)+,(a1)+
 		dbf	d0,.cpyd
 		clr.b	(a1)
-.alreadyinit
-		clr.l	-(a7)
+
+.req1		clr.l	-(a7)
+		pea	(rtfilename)
+		pea	ASLFR_InitialFile
 		pea	(rtdirname)
 		pea	ASLFR_InitialDrawer
 		pea	.pattern
 		pea	ASLFR_InitialPattern
-		pea	.title(pc)
+		pea	.title
 		pea	ASLFR_TitleText
-		pea	1
+		pea	-1
 		pea	ASLFR_DoPatterns
-
-		move.l	d7,a0			;filereq
+		pea	-1
+		pea	ASLFR_RejectIcons
 		move.l	a7,a1			;tags
+		moveq	#13*4,d2
+		bra	.doreq
 
+.req2		sub.l	a1,a1			;tags
+		moveq	#0,d2			;stack space
+
+.doreq		move.l	d7,a0			;filereq
 		move.l	aslbase,a6
 		jsr	(_LVOAslRequest,a6)
-		add.w	#9*4,a7
+		add.l	d2,a7
 		tst.l	d0
-		beq	.requesterfail
-
+		beq	.norequester
 
 	;copy dirname for next requester
 		move.l	d7,a0
@@ -258,15 +268,13 @@ RequestAFile	movem.l	d0-d4/d7/a2-a3/a6,-(sp)
 .cpy		move.b	(a0)+,(a1)+
 		dbeq	d0,.cpy
 		clr.b	(a1)
-		lea	(rtname),a0
-		move.l	a0,d1
-
+		move.l	#rtname,d1
 		move.l	d7,a0
 		move.l	(fr_File,a0),d2
-
 		move.l	#RTDIRNAMELEN+RTFILENAMELEN,d3
 		move.l	dosbase,a6
 		jsr	(_LVOAddPart,a6)
+
 	;remember in environment variable
 		lea	.varname,a0
 		move.l	a0,d1
@@ -275,20 +283,13 @@ RequestAFile	movem.l	d0-d4/d7/a2-a3/a6,-(sp)
 		move.l	#GVF_GLOBAL_ONLY|GVF_SAVE_VAR,d4	;flags
 		jsr	(_LVOSetVar,a6)
 
-		bsr	CloseReadFrom
 		move.l	#rtname,xx_InputName
-.freereq
-		move.l	d7,a0
-		move.l	aslbase,a6
-		jsr	(_LVOFreeAslRequest,a6)
-.exitreq
-		movem.l	(sp)+,_MOVEMREGS
+
+.end		movem.l	(sp)+,_MOVEMREGS
 		rts
 
-.requesterfail
-		bra.b	.freereq
-.norequester
-		bra.b	.exitreq
+.norequester	clr.l	xx_InputName
+		bra	.end
 
 .title		dc.b	"Select a file",0
 .pattern	dc.b	"((#?.(adf|dic|mfm|wrp|wwp|ipf))|disk.[0-9])",0
