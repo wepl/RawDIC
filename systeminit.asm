@@ -792,7 +792,7 @@ Txt1_NOWFILE:		dc.b	"Unable to write file: IoErr %d",0
 Txt1_UEC:		dc.b	"Unknown error code: %d",0
 Txt1_UECT:		dc.b	"Unknown error on track %d",0
 Txt1_NOFUNCTION:	dc.b	"Illegal RawDIC function call!",0
-Txt1_SLAVEVERSION:	dc.b	"RawDIC function call requires higher slave version!",0
+Txt1_SLAVEVER		dc.b	"RawDIC function call requires higher slave version!",0
 Txt1_CRCFAIL:		dc.b	"Unknown disk version!",0
 Txt1_NOTRACK:		dc.b	"Track %d not in TrackList!",0
 Txt1_TRACKLIST:		dc.b	"TrackList invalid!",0

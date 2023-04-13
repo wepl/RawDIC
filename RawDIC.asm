@@ -2,7 +2,7 @@
 ;  :Program.	RawDIC.asm
 ;  :Contents.	create diskimages using parameter file
 ;  :Author.	Graham, Codetapper, Wepl, Psygore
-;  :Version	$Id: RawDIC.asm 1.21 2017/11/09 00:39:26 wepl Exp wepl $
+;  :Version	$Id: RawDIC.asm 1.23 2022/06/07 00:24:49 wepl Exp wepl $
 ;  :History.	xx.xx.xx initial work upto v1.7 done by Graham
 ;		xx.xx.xx enhancements for reading from file done by Codetapper
 ;		16.07.04 cleanup, repacking (Wepl)
@@ -48,6 +48,9 @@
 ;			 this fixes issue #2924, before it started completely new
 ;			 after a no disk error
 ;			 some code cleanup
+;		28.05.22 debug output when switching struct because crc-list
+;		06.06.22 fix reverse tracklists
+;			 don't retry if reading from warp-file
 ;  :Requires.	OS V37+, MC68000+
 ;  :Copyright.	?
 ;  :Language.	68000 Assembler
@@ -55,7 +58,7 @@
 ;  :To Do.
 ;---------------------------------------------------------------------------*
 
-Version		= 5
+Version		= 6
 Revision	= 0
 
 	; the IMSG tags are used to define certain signals in the program
@@ -127,7 +130,7 @@ DFLG_DOUBLEINC2	equ	DFLG_DOUBLEINC&(~DFLG_NORESTRICTIONS)
 		dc.b	"] "
 		INCBIN	"T:date"
 		dc.b	0
-		dc.b	"$Id: RawDIC.asm 1.21 2017/11/09 00:39:26 wepl Exp wepl $",0
+		dc.b	"$Id: RawDIC.asm 1.23 2022/06/07 00:24:49 wepl Exp wepl $",0
 	EVEN
 
 main:
@@ -276,7 +279,7 @@ SM_Error:	; d0=Error occured, print errormessage and wait for CLOSEWINDOW, perio
 		HANDLE_ERROR	FLAGS
 		HANDLE_ERROR	DSKVERSION
 		HANDLE_ERROR	NOFUNCTION
-		HANDLE_ERROR	SLAVEVERSION
+		HANDLE_ERROR	SLAVEVER
 		HANDLE_ERROR	TWLIB,xx_CurrentTrack
 
 		lea	xx_LastError,a1
@@ -324,6 +327,8 @@ SM_Start:	; Start button pressed, start reading disk x
 		beq	SM_Error
 		lea	xx_Disk(pc),a0
 		move.l	d1,(a0)
+		lea	.txt_newstruct,a0
+		bsr	Debug
 		bra.b	.redo
 .doit
 		move.w	xx_CurrentDisk(pc),d1
@@ -411,6 +416,9 @@ SM_Start:	; Start button pressed, start reading disk x
 
 		bra	SM_NextDisk
 
+.txt_newstruct	db	"trying alternate struct",10,0
+	EVEN
+
 	; #################################
 
 ReadDisk:
@@ -438,11 +446,9 @@ ReadDisk:
 		moveq	#1,d2
 		cmp.w	d0,d1
 		bge.b	.s0
-		exg.l	d0,d1
 		neg.l	d2
 .s0		lea	xx_CurrentTrack(pc),a1
 		move.w	d0,(a1)
-		addq.w	#1,d1
 		lea	xx_LastTrack(pc),a1
 		move.w	d1,(a1)
 		move.l	xx_Disk(pc),a1
@@ -462,7 +468,6 @@ ReadDisk:
 		move.l	tle_Decoder(a0),(a1)
 		add.w	#tle_SIZEOF,a0
 		move.l	a0,(a2)
-
 .l1
 		bsr.b	SM_ReadTrack
 		tst.l	d0
@@ -476,12 +481,12 @@ ReadDisk:
 		lea	xx_TrackCount(pc),a0
 		addq.w	#1,(a0)
 		lea	xx_CurrentTrack(pc),a0
-		move.w	xx_TrackInc(pc),d0
-		add.w	d0,(a0)
-		move.w	(a0),d0
-		cmp.w	xx_LastTrack(pc),d0
-		blt.b	.l1
-		bra	.next
+		move	(a0),d0
+		cmp	(xx_LastTrack,pc),d0
+		beq	.next
+		add	(xx_TrackInc,pc),d0
+		move	d0,(a0)
+		bra	.l1
 .out
 		move.w	xx_NumTracks(pc),d0
 		move.l	PrBar0(pc),a0
@@ -538,7 +543,6 @@ SM_ReadTrack:
 	EVEN
 
 _ReadTrackCore:
-		clr.b	.from_warp_file
 .retryall
 		move.w	xx_Retries(pc),xx_Retry	; retries on error
 .retry
@@ -547,18 +551,12 @@ _ReadTrackCore:
 
 		bsr	InputFromFile		; Read from an input file
 		move.l	xx_BufferType(pc),d1	; Check the buffer type and
-		cmp.l	#BUFFER_EMPTY,d1
-		beq.b	.nofile
-		st.b	.from_warp_file
-.nofile
 		cmp.l	#BUFFER_ADOS,d1		; skip disk reading if done
 		beq	.error
 		cmp.l	#BUFFER_MFM,d1
 		beq	.doraw
 		cmp.l	#IERR_OK,d0
 		bne	.error
-
-		;bsr	OutputDebug2
 
 		move.w	xx_Retry(pc),d0
 		cmp.w	xx_Retries(pc),d0	; on first retry
@@ -578,7 +576,7 @@ _ReadTrackCore:
 		and.w	#DFLG_RAWREADONLY,d0	; only when DFLG is not set
 		bne.b	.do
 		bsr	DriveReadDisplay
-		bra.b	.error_handling
+		bra.b	.error
 .do
 		bsr	DriveRawReadDisplay
 .doraw		tst.l	d0
@@ -590,9 +588,6 @@ _ReadTrackCore:
 		tst.l	d0
 		bne.b	.error
 .nosync
-
-		;bsr	OutputDebug2
-
 		lea	xx_ExternalCall(pc),a2
 		move.w	#CALL_DECODER,(a2)
 		moveq	#0,d0
@@ -611,13 +606,10 @@ _ReadTrackCore:
 		move.w	#CALL_NONE,(a3)
 		jsr	(a2)
 
-.error_handling
 .error
-		;bsr	OutputDebug2
-
 		tst.l	d0
 		bpl.b	.ok
-		tst.b	.from_warp_file
+		move.l	(xx_InputName,pc),d1
 		bne.b	.ok		; don't retry if from file
 
 		lea	xx_Retry(pc),a0
@@ -635,8 +627,6 @@ _ReadTrackCore:
 		tst.l	d0
 		rts
 
-.from_warp_file
-		dc.w	0
 
 ; call user init code
 

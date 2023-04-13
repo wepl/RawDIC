@@ -35,6 +35,8 @@
 ;			 - RequestAFile reworked
 ;		23.12.07 Psygore
 ;			 - Copy RawBuffer to MFMBuffer (needed when SYNC_INDEX flag is used)
+;		30.05.22 Wepl
+;			 - remove nonexisting parts of the path on GetVar
 ; Copyright:	Public Domain
 ; Language:	68000 Assembler
 ; Translator:	Barfly
@@ -209,7 +211,50 @@ RequestAFile	movem.l	d0-d4/d7/a2-a3/a6,-(sp)
 		jsr	(_LVOGetVar,a6)
 		tst.l	d0
 		bmi	.req1
-.fromargs
+
+	;we check if directory still exists
+	;if not we remove the last part of the path
+	;until it exists and then append the file name again
+	;separate path from filename
+		move.l	d2,a2			;a2 = buffer
+		move.l	a2,d1
+		jsr	(_LVOPathPart,a6)
+		cmp.l	d0,d2			;if there is no path leave
+		beq	.fromargs
+		move.l	d0,a0
+		move.b	(a0),d3			;d3 = / or first char of file name
+		clr.b	(a0)+
+		move.l	a0,d4			;d4 = file name start
+	;check if path exists
+.lock		move.l	a2,d1
+		move.l	#ACCESS_READ,d2
+		jsr	(_LVOLock,a6)
+		move.l	d0,d1
+		bne	.unlock
+	;remove last part of path and retry
+		move.l	a2,d1
+		jsr	(_LVOPathPart,a6)
+		move.l	d0,a0
+		tst.b	(a0)			;no more subdirs?
+		beq	.append
+		clr.b	(a0)
+		bra	.lock
+.unlock		jsr	(_LVOUnLock,a6)
+	;append filename
+.search		tst.b	(a2)+
+		bne	.search
+		subq.l	#1,a2
+		cmp.b	#":",(-1,a2)
+		beq	.append
+		move.b	#"/",(a2)+
+.append		cmp.b	#"/",d3
+		beq	.copyin
+		move.b	d3,(a2)+
+.copyin		move.l	d4,a0
+.copy		move.b	(a0)+,(a2)+
+		bne	.copy
+
+.fromargs	move.l	#rtname,d2		;buffer = d2 = input name
 		move.l	d2,d1
 		move.l	dosbase,a6
 		jsr	(_LVOFilePart,a6)

@@ -1,0 +1,19 @@
+
+Version C:RawDIC >T:rawdicversion
+Set VER `perl -ne "/^\w+ (\d+)\.(\d+)/ and print $1 . $2" T:rawdicversion`
+Delete T:rawdicversion
+Set ARC .packages/RawDIC$VER.lha
+
+Delete #?.bak
+Delete #?/#?.bak
+
+C:DoVer FMT="%5v (%2d %M %2y) %n" DEFAULT="    -" FORCE QUIET C:RawDIC
+Copy Clone C:RawDIC RawDIC.guide	.release
+Copy Clone #?.asm			.release/src
+Copy Clone :IncludeExtra/RawDIC.i	.release/src/include
+
+Delete $ARC
+Rename .release RawDIC
+lha -aeryZ a $ARC RawDIC
+Rename RawDIC .release
+

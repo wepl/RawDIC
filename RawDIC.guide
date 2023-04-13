@@ -1,13 +1,13 @@
 @database RawDIC
-$VER: RawDIC_Guide 5.0
-$Id: RawDIC.guide 1.17 2017/11/09 00:39:26 wepl Exp wepl $
-@node main "RawDIC documentation (21.10.2017)"
+$VER: RawDIC_Guide 6.0
+$Id: RawDIC.guide 1.18 2022/06/07 00:24:49 wepl Exp wepl $
+@node main "RawDIC documentation (06.06.2022)"
 
-			   @{b}RawDIC V5.0@{ub}
+			   @{b}RawDIC V6.0@{ub}
 
 		      © 1999 by John Selck
 	  © 2002-2006 by Codetapper/Wepl/JOTD/Psygore
-		      © 2017 by Wepl
+		      © 2017,2022 by Wepl
 
 			@{" Disclaimer    " link disclaimer}
 			@{" About         " link about}
@@ -767,6 +767,10 @@ WWarp:		A disk imaging format written by Wepl which stores tracks
 
 @endnode
 @node history "History"
+
+6.0	Released on 06.06.2022
+	(Wepl) reverse tracklist are now supported as documented (issue #3968)
+	(Wepl) remembered image file path is now shortened as it still exists (issue #4603)
 
 5.0	Released on 08.11.2017
 	(Wepl) new function rawdic_SetSync to set a new wordsync during disk processing

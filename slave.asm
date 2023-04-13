@@ -17,6 +17,7 @@
 ;			 lib_SetSync added
 ;		08.11.17 Wepl:
 ;			 debug output enhanced
+;		06.06.22 fix reverse tracklists
 ; Copyright:	Public Domain
 ; Language:	68000 Assembler
 ; Translator:	Barfly
@@ -120,7 +121,7 @@ lib_SetSync	move.l	a0,-(a7)
 		move.w	d0,xx_CurrentSync
 		rts
 
-.error		moveq	#IERR_SLAVEVERSION,d0
+.error		moveq	#IERR_SLAVEVER,d0
 		bra	lib_AbsError
 
 _TrackCRC16:	; calculates the CRC16 value of the track in trackbuffer
@@ -200,51 +201,59 @@ _GetTrackInfo:	; calculates the offset of a track in the diskimage
 		; D0.w=track
 		; => D0.l=offset (-1 when track not present)
 
-		movem.l	d1-d4/a0-a1,-(sp)
+		movem.l	d1-d5/a0-a1,-(sp)
 
 		move.l	xx_Disk(pc),a1
 		move.w	dsk_Flags(a1),d4
 		and.w	#DFLG_DOUBLEINC2,d4
 
-		moveq	#0,d3
+		moveq	#0,d3			; d3 = offset
 		move.l	xx_Disk(pc),a0
 		move.l	dsk_TrackList(a0),a0	; get default pointer to tracklist
-		moveq	#TL_END,d1
-.l0		cmp.w	tle_FirstTrack(a0),d1	; end of tracklist reached?
-		beq	.error
-		tst.w	d4
-		beq.b	.ss
-		move.w	tle_FirstTrack(a0),d2
-		add.w	d0,d2
-		and.w	#1,d2
-		bne.b	.skip
-.ss		cmp.w	tle_FirstTrack(a0),d0
-		blt.b	.try
-		cmp.w	tle_LastTrack(a0),d0
-		bgt.b	.try
+
+.next_tl	move	(tle_FirstTrack,a0),d2	; d2 = first track
+		bmi	.error			; end of tracklist reached?
+		move	(tle_LastTrack,a0),d1	; d1 = last track
+	;check skipped track because doubleinc
+		tst.w	d4			; doubleinc?
+		beq	.nodouble
+		move	d0,d5
+		add	d2,d5
+		and	#1,d5			; odd = skipped track?
+		bne	.skip
+	;check for reverse tracklist
+.nodouble	cmp	d2,d1
+		blt	.reverse
+		cmp	d2,d0
+		blt	.skip
+		cmp	d1,d0
+		bgt	.skip
 		bra.b	.get
-.try
-.skip		move.w	tle_LastTrack(a0),d2
-		sub.w	tle_FirstTrack(a0),d2
+.reverse	cmp	d1,d0
+		blt	.skip
+		cmp	d2,d0
+		ble	.get
+	; skip this tracklist entry
+.skip		sub	d2,d1
 		bpl.b	.s0
-		neg.w	d2
-.s0		addq.w	#1,d2
-		tst.w	d4
+		neg.w	d1			; negate on reverse
+.s0		addq.w	#1,d1
+		tst.w	d4			; doubleinc?
 		beq.b	.s1
-		lsr.w	#1,d2
-.s1		mulu.w	tle_BlockLength(a0),d2
-		add.l	d2,d3
+		lsr.w	#1,d1
+.s1		mulu.w	tle_BlockLength(a0),d1
+		add.l	d1,d3
 		add.w	#tle_SIZEOF,a0
-		bra.b	.l0
-.get		move.w	d0,d2
-		sub.w	tle_FirstTrack(a0),d2
+		bra.b	.next_tl
+
+.get		sub	d2,d0
 		bpl.b	.s2
-		neg.w	d2
+		neg.w	d0			; negate on reverse
 .s2		tst.w	d4
 		beq.b	.s3
-		lsr.w	#1,d2
-.s3		mulu.w	tle_BlockLength(a0),d2
-		add.l	d2,d3
+		lsr.w	#1,d0
+.s3		mulu.w	tle_BlockLength(a0),d0
+		add.l	d0,d3
 		lea	xx_CurrentSync(pc),a1
 		move.w	tle_Sync(a0),(a1)
 		lea	xx_CurrentDecoder(pc),a1
@@ -254,10 +263,11 @@ _GetTrackInfo:	; calculates the offset of a track in the diskimage
 		move.w	tle_BlockLength(a0),d1
 		move.l	d1,(a1)
 		move.l	d3,d0
-		movem.l	(sp)+,d1-d4/a0-a1
+		movem.l	(sp)+,d1-d5/a0-a1
 		tst.l	d0
 		rts
-.error		movem.l	(sp)+,d1-d4/a0-a1
+
+.error		movem.l	(sp)+,d1-d5/a0-a1
 		moveq	#-1,d0
 		rts
 
@@ -338,26 +348,25 @@ _TrackListLength:	; calculates the number of tracks in a tracklist
 
 		; tle_FirstTrack[i]<=tle_LastTrack[i]
 
-		moveq	#0,d0			; 0 tracks
-		moveq	#0,d1
-		moveq	#0,d4
+		moveq	#0,d0			; d0 = track count
+		moveq	#0,d1			; d1 = max block length
+		moveq	#0,d4			; d4 = actual block length
 
 		tst.w	tle_FirstTrack(a0)
 		bmi.b	.error			; atleast 1 segment
-.l0		tst.w	tle_LastTrack(a0)
+.l0		move.w	tle_LastTrack(a0),d3
 		bmi.b	.error
-		move.w	tle_LastTrack(a0),d3
-		move.w	d3,d2
+		move.w	d3,d2			; d3 = actual endtrack
 		sub.w	tle_FirstTrack(a0),d2	; starttrack <= endtrack
 		bpl.b	.calc
-		tst.w	d5
+		tst.w	d5			;norestrictions?
 		beq.b	.error
 		neg.w	d2
-.calc		tst.w	d6
+.calc		tst.w	d6			;doubleinc2
 		beq.b	.nodi
 		lsr.w	#1,d2
 .nodi		addq.w	#1,d2
-		add.w	d2,d0
+		add.w	d2,d0			;add to track count
 		move.w	tle_BlockLength(a0),d4
 		beq.b	.error
 		cmp.l	d4,d1
@@ -368,7 +377,7 @@ _TrackListLength:	; calculates the number of tracks in a tracklist
 		bmi.b	.ok
 		cmp.w	tle_FirstTrack(a0),d3	; endtrack0 < starttrack1
 		blt.b	.l0
-		tst.w	d5
+		tst.w	d5			;norestrictions?
 		bne.b	.l0
 
 .error		movem.l	(sp)+,d2-d6/a0-a1
@@ -392,13 +401,12 @@ _DiskImageLength:	; calculates the length of the diskimage
 		moveq	#0,d0
 .l0		tst.w	tle_FirstTrack(a0)
 		bmi.b	.exit
-		tst.w	tle_LastTrack(a0)
-		bmi.b	.error
 		move.w	tle_LastTrack(a0),d1
+		bmi.b	.error
 		sub.w	tle_FirstTrack(a0),d1
 		bpl.b	.calc
 		tst.w	d2
-		beq.b	.error	; no negative track increment
+		beq.b	.error	; no negative track increment without norestrictions
 		neg.w	d1
 .calc		tst.w	d3
 		beq.b	.nodi
@@ -1100,10 +1108,12 @@ _TestCRC:	; compares the CRC values of the CRClist with the tracks.
 		movem.l	(sp)+,d1-d7/a0-a6
 		moveq	#IERR_OK,d0
 		rts
+
 .error		bsr	_FreeTrackBuffer
 .errormem	movem.l	(sp)+,d1-d7/a0-a6
 		tst.l	d0
 		rts
+
 .csum		bsr	_FreeTrackBuffer
 		movem.l	(sp)+,d1-d7/a0-a6
 		moveq	#IERR_CRCFAIL,d0
