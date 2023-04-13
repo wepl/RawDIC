@@ -1,8 +1,8 @@
 ;*---------------------------------------------------------------------------
 ;  :Program.	RawDIC.asm
 ;  :Contents.	create diskimages using parameter file
-;  :Author.	Graham, Codetapper, Wepl
-;  :Version	$Id: RawDIC.asm 1.17 2006/02/27 07:18:00 wepl Exp wepl $
+;  :Author.	Graham, Codetapper, Wepl, Psygore
+;  :Version	$Id: RawDIC.asm 1.18 2006/11/02 22:04:08 wepl Exp wepl $
 ;  :History.	xx.xx.xx initial work upto v1.7 done by Graham
 ;		xx.xx.xx enhancements for reading from file done by Codetapper
 ;		16.07.04 cleanup, repacking (Wepl)
@@ -23,6 +23,14 @@
 ;			 version bumped to 4.2
 ;		14.02.06 Wepl
 ;			 version bumped to 4.3
+;		03.09.06 Psygore
+;			 track buffer (io_Data) is located in fastmem
+;			 (needs at least Kickstart V36), readfromfile will use
+;			 fastmem too for track buffer instead of chipmem
+;		07.09.06 Psygore
+;			 io_Data located in chipmem (TD_RAWREAD)
+;		02.11.06 Wepl
+;			 version bumped to 4.4
 ;  :Requires.	OS V37+, MC68000+
 ;  :Copyright.	?
 ;  :Language.	68000 Assembler
@@ -31,7 +39,7 @@
 ;---------------------------------------------------------------------------*
 
 Version		= 4
-Revision	= 3
+Revision	= 4
 
 	; the IMSG tags are used to define certain signals in the program
 	; i.e. a pressed button or a failure while reading a track
@@ -102,7 +110,7 @@ DFLG_DOUBLEINC2	equ	DFLG_DOUBLEINC&(~DFLG_NORESTRICTIONS)
 		dc.b	"] "
 		INCBIN	"T:date"
 		dc.b	0
-		dc.b	"$Id: RawDIC.asm 1.17 2006/02/27 07:18:00 wepl Exp wepl $",0
+		dc.b	"$Id: RawDIC.asm 1.18 2006/11/02 22:04:08 wepl Exp wepl $",0
 	EVEN
 
 main:
@@ -659,8 +667,9 @@ xx_Slave:	dc.l	0		; BCPL (!) pointer to the imager slave
 xx_SlvStruct:	dc.l	0		; pointer to the slave structure
 xx_Text:	dc.l	0		; pointer to the short info text
 xx_RawBuffer:	dc.l	Space		; pointer to the raw mfm buffer (for DMA)
+xx_RawBufferChip: dc.l	BufferChip		; pointer to the raw mfm buffer (for DMA)
 xx_MFMBuffer:	dc.l	Buffer		; pointer to the raw mfm buffer (for decoder)
-xx_RawLength:	dc.l	$7c00		; length of raw buffer (Codetapper)
+xx_RawLength:	dc.l	BUFFERLENGTH	; length of raw buffer (Codetapper)
 xx_RawPointer:	dc.l	0		; pointer to the raw buffer
 xx_RawBit:	dc.l	0		; bit pointer to raw data
 xx_Disk:	dc.l	0		; pointer to the current disk structure
@@ -856,8 +865,9 @@ Buffer:			ds.b	BUFFERLENGTH
 stringBuffer:
 sourceNameBuffer:	ds.b	$0200
 slaveNameBuffer:	ds.b	$0200		; 512 chars for filename + path should be enough
+Space:			ds.b	BUFFERLENGTH
 
 	section	"chipmem",BSS_C
 
-Space:			ds.b	BUFFERLENGTH
+BufferChip:		ds.b	BUFFERLENGTH
 

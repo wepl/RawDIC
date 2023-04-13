@@ -29,6 +29,8 @@
 ;			 ParseSource fixed
 ;			 error handling for OpenSlave/OpenDevice added
 ;			 closing aslreq added
+;		07.09.06 Psygore
+;			 copy io_Data buffer from chipmem to fastmem (TD_RAWREAD)
 ; Copyright:	Public Domain
 ; Language:	68000 Assembler
 ; Translator:	Barfly
@@ -1404,7 +1406,7 @@ DriveRawRead:
 		bsr	_tdenable81
 
 		move.l	a5,a1
-		move.l	xx_RawBuffer(pc),IO_DATA(a1)
+		move.l	xx_RawBufferChip(pc),IO_DATA(a1)
 		move.l	xx_RawLength(pc),IO_LENGTH(a1)
 		move.l	d7,IO_OFFSET(a1)
 		move.w	#TD_RAWREAD,IO_COMMAND(a1)
@@ -1418,14 +1420,23 @@ DriveRawRead:
 		move.b	IO_ERROR(a5),d0
 		bne.b	.nomfm
 
+		move.l	xx_RawBufferChip(pc),a2
 		move.l	xx_RawBuffer(pc),a0
 		move.l	xx_MFMBuffer(pc),a1
 		move.l	xx_RawLength(pc),d0
 		lsr.l	#4,d0
-.l0		move.l	(a0)+,(a1)+
-		move.l	(a0)+,(a1)+
-		move.l	(a0)+,(a1)+
-		move.l	(a0)+,(a1)+
+.l0		move.l	(a2)+,d1
+		move.l	d1,(a0)+
+		move.l	d1,(a1)+
+		move.l	(a2)+,d1
+		move.l	d1,(a0)+
+		move.l	d1,(a1)+
+		move.l	(a2)+,d1
+		move.l	d1,(a0)+
+		move.l	d1,(a1)+
+		move.l	(a2)+,d1
+		move.l	d1,(a0)+
+		move.l	d1,(a1)+
 		subq.l	#1,d0
 		bne.b	.l0
 
