@@ -4,6 +4,7 @@
 ; History:	
 ;		20.08.04 Wepl
 ;			 debug output also if no disk matches
+;		23.01.05 Wepl - disk name creation fixed
 ; Copyright:	Public Domain
 ; Language:	68000 Assembler
 ; Translator:	Barfly
@@ -538,7 +539,7 @@ _SaveDiskImage:	; stores a diskimage from memory to hd
 		tst.l	d0
 		rts
 
-_GetDiskName:	lea	_DInum(pc),a1
+_GetDiskName:	lea	_DInum(pc),a0
 		move.w	xx_CurrentDisk(pc),d0
 		divu	#10,d0
 		beq	.1
