@@ -1,9 +1,12 @@
 @database RawDIC
-$VER: RawDIC_Guide 4.1
-@node main "RawDIC documentation (25.5.2005)"
+$VER: RawDIC_Guide 4.2
+$Id: RawDIC.guide 1.12 2006/01/30 19:03:17 wepl Exp wepl $
+@node main "RawDIC documentation (30.1.2006)"
 
-			   RawDIC V4.1
-	   © 1999 by John Selck and © 2002-2005 by Codetapper/Wepl/JOTD
+			   @{b}RawDIC V4.2@{ub}
+
+		      © 1999 by John Selck
+	  © 2002-2006 by Codetapper/Wepl/JOTD/Psygore
 
 			@{" Disclaimer    " link disclaimer}
 			@{" About         " link about}
@@ -26,7 +29,7 @@ $VER: RawDIC_Guide 4.1
 RawDIC is written and copyright © 1999 by @{"John Selck" link contact}
 
 Reading data from input files was added by @{"Codetapper" link contact} in October 2002.
-Several changes and additions by Wepl in 2004-2005.
+Several changes and additions by Wepl/JOTD/Psygore in 2004-2006.
 
 This program is freely distributable unless no changes
 are made to the archive.
@@ -67,19 +70,12 @@ in your libs: directory.
 If you are reading data from a MFMWarp file, you will need the @{"XPK" link xpk} package
 from Aminet to depack the tracks. The file xpkmaster.library must exist
 in your libs: directory.
-
-If you are installing a multi-disk game from files, you will need to 
-download @{"Reqtools" link reqtools} package from Aminet for the file requester. The file
-reqtools.library must exist in libs: or you will be unable to switch
-disks.
-
 @endnode
 @node contact "Contact"
 
 E-Mail: graham@cruise.de
 E-Mail: codetapper@whdload.de
 E-Mail: jotd2@whdload.de
-
 @endnode
 @node tooltypes "ToolTypes"
 
@@ -686,14 +682,6 @@ the track in a particular format (usually as a standard AmigaDos track)
 yet the ISlave is trying to decode the track with MFM data.
 
 @endnode
-@node reqtools "Reqtools library"
-
-When reading data from input files on multiple disk games, you will need 
-the Reqtools package to bring up a file requester.
-
-You can download Reqtools from Aminet:util/libs/ReqToolsUsr.lha
-
-@endnode
 @node xpk "XPK library"
 
 To depack data from MFMWarp files, you will need the XPK package.
@@ -755,6 +743,11 @@ WWarp:		A disk imaging format written by Wepl which stores tracks
 
 @endnode
 @node history "History"
+
+4.2	Released on 30.1.2006
+	(Wepl) single tracks from trackwarp.library should work correctly now
+	(Psygore) AppendFile works on nonexistent files
+	(Wepl) cleanup of this amigaguide
 
 4.1	Released on 25.5.2005
 	(Wepl) better error handling
@@ -889,8 +882,6 @@ WWarp:		A disk imaging format written by Wepl which stores tracks
 @node future "Future Plans"
 
 Inhibit the disk drive before reading. (Jeff)
-
-Add support for the compressed track formats in WWarp archives.
 
 Virus check the bootblock of disks using xvs.library and replace the
 bootblock if it's infected. (Perhaps!)

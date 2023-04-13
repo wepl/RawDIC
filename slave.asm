@@ -5,6 +5,9 @@
 ;		20.08.04 Wepl
 ;			 debug output also if no disk matches
 ;		23.01.05 Wepl - disk name creation fixed
+;		31.05.05 Wepl - _BitShiftMFM fixed
+;		30.01.06 Psygore - _AppendFile creates a new file by calling
+;			 _WriteFile if the file does not exist before
 ; Copyright:	Public Domain
 ; Language:	68000 Assembler
 ; Translator:	Barfly
@@ -618,7 +621,7 @@ _AppendFile:	; stores a file into the given path
 		move.l	(sp)+,d3
 		move.l	(sp)+,d2
 		move.l	d0,d1
-		beq.b	.error
+		beq.b	.newfile
 		movem.l	d1-d3,-(sp)
 		moveq	#0,d2
 		moveq	#OFFSET_END,d3
@@ -633,12 +636,9 @@ _AppendFile:	; stores a file into the given path
 		movem.l	(sp)+,d1-d7/a0-a6
 		moveq	#IERR_OK,d0
 		rts
-.error
-		jsr	_LVOIoErr(a6)
-		move.w	d0,xx_LastIoErr
+.newfile
 		movem.l	(sp)+,d1-d7/a0-a6
-		moveq	#IERR_NOWFILE,d0
-		rts
+		bra	_WriteFile
 
 _CheckFileFitDisk:	; tests parameters if they stay inside the diskimage
 
@@ -848,7 +848,7 @@ _BitShiftMFM:	; updates the MFM buffer with the actual bit offset
 		move.l	xx_RawPointer(pc),a0
 		move.l	xx_RawBuffer(pc),a1
 		add.l	xx_RawLength(pc),a1
-		subq.l	#4,a1
+	;	subq.l	#4,a1			;Wepl: confilcts with reading wwarp files and exact mfm data length
 		move.l	xx_MFMBuffer(pc),a2
 		move.l	a2,a3
 		add.l	d0,a3

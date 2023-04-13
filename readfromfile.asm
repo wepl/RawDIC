@@ -49,8 +49,6 @@ xx_ReadFromPtr	dc.l	0
 
 ;---------------------------------------------------------------------
 
-;---------------------------------------------------------------------
-
 InputFromFile	move.l	#BUFFER_EMPTY,xx_BufferType	;Mark the buffer as empty
 
 		move.l	xx_InputName(pc),d0		;If there is no filename to read from, don't bother doing anything
@@ -69,9 +67,6 @@ InputFromFile	move.l	#BUFFER_EMPTY,xx_BufferType	;Mark the buffer as empty
 
 .NoReadFromFile	moveq	#IERR_OK,d0			;No error and buffer empty (read from disk)
 		rts
-
-;---------------------------------------------------------------------
-
 
 ;---------------------------------------------------------------------
 ; ReadMFMTrack	
