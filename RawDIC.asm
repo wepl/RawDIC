@@ -2,7 +2,7 @@
 ;  :Program.	RawDIC.asm
 ;  :Contents.	create diskimages using parameter file
 ;  :Author.	Graham, Codetapper, Wepl, Psygore
-;  :Version	$Id: RawDIC.asm 1.20 2008/07/31 07:47:58 wepl Exp wepl $
+;  :Version	$Id: RawDIC.asm 1.21 2017/11/09 00:39:26 wepl Exp wepl $
 ;  :History.	xx.xx.xx initial work upto v1.7 done by Graham
 ;		xx.xx.xx enhancements for reading from file done by Codetapper
 ;		16.07.04 cleanup, repacking (Wepl)
@@ -35,6 +35,19 @@
 ;			 version bumped to 4.5
 ;		29.04.08 Wepl
 ;			 bufferlength increased to $7c04 to read wwarps with $7c00
+;		18.09.13 Wepl
+;			 version bumped to 5.0
+;		21.10.17 Wepl
+;			 slave version matches rawdic version
+;			 fixed display of 'Select File' button without trackwarp.library
+;		05.11.17 Wepl
+;			 xx_DiskFinished cleared before TestCRC to fix 'file exceeds
+;			 diskimage' when crc is used on disk 2 or later
+;			 provide pointer to loaded diskimage on DiskImageCode
+;		08.11.17 loop on errors instead quit to allow retry of current disk,
+;			 this fixes issue #2924, before it started completely new
+;			 after a no disk error
+;			 some code cleanup
 ;  :Requires.	OS V37+, MC68000+
 ;  :Copyright.	?
 ;  :Language.	68000 Assembler
@@ -42,8 +55,8 @@
 ;  :To Do.
 ;---------------------------------------------------------------------------*
 
-Version		= 4
-Revision	= 6
+Version		= 5
+Revision	= 0
 
 	; the IMSG tags are used to define certain signals in the program
 	; i.e. a pressed button or a failure while reading a track
@@ -114,7 +127,7 @@ DFLG_DOUBLEINC2	equ	DFLG_DOUBLEINC&(~DFLG_NORESTRICTIONS)
 		dc.b	"] "
 		INCBIN	"T:date"
 		dc.b	0
-		dc.b	"$Id: RawDIC.asm 1.20 2008/07/31 07:47:58 wepl Exp wepl $",0
+		dc.b	"$Id: RawDIC.asm 1.21 2017/11/09 00:39:26 wepl Exp wepl $",0
 	EVEN
 
 main:
@@ -137,8 +150,8 @@ SM_Init:
 
 		move.l	xx_SlvStruct(pc),a0
 		move.b	slv_Version(a0),d0
-		cmp.b	#3,d0			; slave version 1 or 2 ok
-		bcs.b	.vok
+		cmp.b	#Version,d0		; slave version not greater than rawdic
+		bls.b	.vok
 		moveq	#IERR_VERSION,d0
 		bra	SM_Error
 .vok
@@ -168,7 +181,7 @@ SM_Init:
 		bsr	RefreshProgressBar	; both bars at 0%
 
 		lea	xx_CurrentDisk(pc),a0
-		move.w	#1,(a0)		; always start with disk 1
+		move.w	#1,(a0)			; always start with disk 1
 
 		lea	xx_Disk(pc),a1
 		move.l	xx_SlvStruct(pc),a0
@@ -183,12 +196,14 @@ SM_NextDisk:
 
 		move.l	ButtonStart(pc),a0
 		bsr	OnButton
-		bsr	RefreshGadgets	; activate start button
+		bsr	RefreshGadgets			; activate start button
 
+		move.l	aslbase(pc),d0			;If asl and twarplib found
+		beq	.noselect			;enable the Select button
 		move.l	ButtonSelectFile(pc),a0
 		bsr	OnButton
-		bsr	RefreshGadgets	; activate select file button
-
+		bsr	RefreshGadgets			; activate select file button
+.noselect
 		move.l	(xx_Disk),a0
 		cmp.w	#2,(dsk_Version,a0)
 		blo	.dsknum
@@ -208,19 +223,16 @@ SM_NextDisk:
 		cmp.b	#IMSG_Start,d0
 		beq	SM_Start
 		cmp.b	#IMSG_SelectFile,d0
-		bne	.NoSelect
-		DEBUG_MESSAGE	<select pressed 1>
-
+		bne	.l1
 		bsr	RequestAFile
-.NoSelect	bra.b	.l1
+		bra	.l1
 
 SM_Exit:	; State Machine is in endstate
 
 		rts
 
 ; arg1: error code suffix
-; arg2: message text
-; arg3: message argument
+; arg2: message argument
 
 HANDLE_ERROR:MACRO
 	IFGT	NARG-1
@@ -233,26 +245,14 @@ HANDLE_ERROR:MACRO
 .n\@
 	ENDM
 
-HANDLE_ERROR_WAIT:MACRO
-	sub.l	a1,a1
-	IFGT	NARG-1
-	lea	\2,a1
-	ENDC
-	cmp.b	#IERR_\1,d0
-	bne.b	.n\@
-	lea	Txt1_\1(pc),a0
-	bsr	DisplayText
-	bra.b	SM_Delay	; special
-.n\@
-	ENDM
-
-SM_Error:	; Error occured, print errormessage and wait for CLOSEWINDOW, period.
-
-		DEBUG_MESSAGE	<error occured>
+SM_Error:	; d0=Error occured, print errormessage and wait for CLOSEWINDOW, period.
 
 		bsr	DriveMotorOff	; in case that custom error occured
 					; while reading a disk.
 
+		move.l	ButtonStart(pc),a0
+		bsr	OffButton
+		bsr	RefreshGadgets	; deactivate start button
 		move.l	ButtonStop(pc),a0
 		bsr	OffButton
 		bsr	RefreshGadgets	; deactivate stop button
@@ -269,36 +269,28 @@ SM_Error:	; Error occured, print errormessage and wait for CLOSEWINDOW, period.
 		HANDLE_ERROR	OUTOFMEM
 		HANDLE_ERROR	DISKRANGE
 		HANDLE_ERROR	NOTRACK,xx_CurrentTrack
-		HANDLE_ERROR_WAIT	NODISK
+		HANDLE_ERROR	NODISK
 		HANDLE_ERROR	CRCFAIL
 		HANDLE_ERROR	TRACKLIST
 		HANDLE_ERROR	VERSION
 		HANDLE_ERROR	FLAGS
 		HANDLE_ERROR	DSKVERSION
 		HANDLE_ERROR	NOFUNCTION
+		HANDLE_ERROR	SLAVEVERSION
+		HANDLE_ERROR	TWLIB,xx_CurrentTrack
 
-		cmp.b	#IERR_TWLIB,d0
-		bne.b	.ntw
-		sub.l	a1,a1
-		lea	Txt1_TWLIB(pc),a0
-		lea	xx_CurrentTrack,a1
-		bra	.display
-.ntw
 		lea	xx_LastError,a1
-		lea	Txt1_UEC(pc),a0	; unknown/forgotten error code
-		bra	.display
-
-.wait		bsr	WaitIMSG
-		cmp.b	#IMSG_CLOSEWINDOW,d0
-		bne.b	.wait
-		bra	SM_Exit
-
+		lea	Txt1_UEC(pc),a0		; unknown/forgotten error code
 .display	bsr	DisplayText
-		bra	.wait
+		move.l	dosbase(pc),a6
+		moveq	#100,d1			;wait 2 seconds
+		jsr	_LVODelay(a6)
+		bra	SM_NextDisk		;allow retry of current disk
 
 SM_Finished:	; All disks finished, wait 1 second and exit
 
-		bsr	Txt1Finished
+		lea	Txt1_F(pc),a0
+		bsr	DisplayText
 		move.l	dosbase(pc),a6
 		moveq	#50,d1
 		jsr	_LVODelay(a6)
@@ -306,8 +298,8 @@ SM_Finished:	; All disks finished, wait 1 second and exit
 
 SM_Stop:	; Stop button pressed, wait 2 seconds and restart
 
-		bsr	Txt1Cancelled
-SM_Delay:
+		lea	Txt1_C(pc),a0
+		bsr	DisplayText
 		move.l	dosbase(pc),a6
 		moveq	#100,d1
 		jsr	_LVODelay(a6)
@@ -318,6 +310,9 @@ SM_Start:	; Start button pressed, start reading disk x
 		move.l	TextDisplay1(pc),a0
 		move.l	winptr(pc),a1
 		bsr	RefreshTextDisplay	; clear text area
+
+		lea	xx_DiskFinished(pc),a0
+		clr.w	(a0)			; diskimage not finished
 
 .redo		bsr	_TestCRC
 		cmp.b	#IERR_OK,d0
@@ -356,9 +351,6 @@ SM_Start:	; Start button pressed, start reading disk x
 		move.l	ButtonStop(pc),a0
 		bsr	OnButton
 		bsr	RefreshGadgets	; activate stop button
-
-		lea	xx_DiskFinished(pc),a0
-		clr.w	(a0)			; diskimage not finished
 
 		bsr	_AllocTrackBuffer	; ... trackbuffer
 		tst.l	d0
@@ -519,14 +511,31 @@ SM_ReadTrack:
 		bsr.b	_ReadTrackCore
 		move.l	xx_Debug,d1
 		beq	.nodebug
-		bsr	OutputDebugCRC
+	;on debug
+		tst.l	d0
+		bpl	.debugok
+	;on debug fail
+		move.l	d0,-(a7)
+		move.l	xx_CurrentTLen,-(a7)
+		move	xx_CurrentTrack,-(a7)
+		move	xx_CurrentDisk,-(a7)
+		lea	.fmt,a0
+		bsr	Debug
+		add.w	#12,a7
 		bra	.nodec
+	;on debug success
+.debugok	bsr	_TrackCRC16
+		bra	.nodec
+	;normal
 .nodebug	tst.l	d0
 		bmi.b	.error
 .nodec		moveq	#IERR_OK,d0
 		bsr	_StoreTrackToImage
 .error		tst.l	d0
 		rts
+
+.fmt		dc.b	"Disk=%d Track=%d Length=%lx RC=%ld failed",10,0
+	EVEN
 
 _ReadTrackCore:
 		clr.b	.from_warp_file
@@ -643,22 +652,26 @@ _CallInitCode:
 _CallDiskCode:
 		lea	xx_ExternalCall(pc),a0
 		move.w	#CALL_DISK,(a0)
+
 		move.l	xx_Disk(pc),a0
 		move.l	dsk_DiskCode(a0),d0
 _Call:		beq.b	.s0
+		move.l	d0,a2
 
-		; actually call someting
-
-		movem.l	d0-d1/a0-a1,-(a7)
 		lea	(Txt1_Working),a0
 		bsr	DisplayText
-		movem.l	(a7)+,d0-d1/a0-a1
 
-		move.l	d0,a1
 		moveq	#0,d0
 		move.w	xx_CurrentDisk(pc),d0
+
+	; starting RawDIC v5, provide address of diskimage
+		move.l	xx_SlvStruct,a1
+		cmp.b	#5,(slv_Version,a1)
+		blo	.skip			;force higher slave version
+		move.l	xx_DiskImage,a1
+.skip
 		lea	rawdic_Library(pc),a5
-		jsr	(a1)			; A0=Disk/D0.l=#
+		jsr	(a2)			; A0=Disk/D0.l=#/A1=image
 		lea	xx_ExternalCall(pc),a2
 		move.w	#CALL_NONE,(a2)
 		tst.l	d0
@@ -765,7 +778,6 @@ GetIDCMP:	; D4=IDCMP flags/D5=Code/A4=adress
 
 
 WaitIDCMP:	; D4=IDCMP flags/D5=Code/A4=adress
-		DEBUG_MESSAGE	waitidcmp
 
 		movem.l	d0-d3/d6-d7/a0-a3/a5-a6,-(sp)
 		move.l	4.w,a6
@@ -805,7 +817,6 @@ ParseIDCMP:
 .stoppressed	moveq	#IMSG_Stop,d0
 		bra.b	.exit
 .selectpressed	moveq	#IMSG_SelectFile,d0	; Select File added by Codetapper
-		DEBUG_MESSAGE	<select pressed 2>
 		bra.b	.exit
 
 

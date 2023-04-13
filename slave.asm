@@ -13,6 +13,10 @@
 ;				error checking
 ;		30.04.08 Wepl:
 ;			 lib_Print added
+;		18.09.13 Wepl:
+;			 lib_SetSync added
+;		08.11.17 Wepl:
+;			 debug output enhanced
 ; Copyright:	Public Domain
 ; Language:	68000 Assembler
 ; Translator:	Barfly
@@ -30,8 +34,8 @@ rawdic_Library:
 		bra.w	lib_AppendDiskFile
 		bra.w	lib_DMFM_STANDARD
 		bra.w	lib_Print
+		bra.w	lib_SetSync
 		bra.w	lib_Reserved	; future use?
-		bra.w	lib_Reserved
 		bra.w	lib_Reserved
 	BOPT OD6+			;enable branch optimizing
 
@@ -108,6 +112,17 @@ lib_Print	movem.l	d0-d2/a0-a1/a6,-(a7)
 		movem.l	(a7)+,d0-d2/a0-a1/a6
 		rts
 
+lib_SetSync	move.l	a0,-(a7)
+		move.l	xx_SlvStruct,a0
+		cmp.b	#5,(slv_Version,a0)
+		movea.l	(a7)+,a0
+		blo	.error
+		move.w	d0,xx_CurrentSync
+		rts
+
+.error		moveq	#IERR_SLAVEVERSION,d0
+		bra	lib_AbsError
+
 _TrackCRC16:	; calculates the CRC16 value of the track in trackbuffer
 
 		; => D0.w=CRC16
@@ -126,8 +141,27 @@ _TrackCRC16:	; calculates the CRC16 value of the track in trackbuffer
 .s0		dbra	d3,.l1
 		subq.l	#1,d2
 		bne.b	.l0
-.no		movem.l	(sp)+,d1-d3/a0
+.no
+		move.l	xx_Track,a0
+		add.w	#16,a0
+		move.l	-(a0),-(a7)
+		move.l	-(a0),-(a7)
+		move.l	-(a0),-(a7)
+		move.l	-(a0),-(a7)
+		move	d0,-(a7)
+		move.l	xx_CurrentTLen,-(a7)
+		move	xx_CurrentSync,-(a7)
+		move	xx_CurrentTrack,-(a7)
+		move	xx_CurrentDisk,-(a7)
+		lea	.fmt,a0
+		bsr	Debug
+		add.w	#16+12,a7
+		
+		movem.l	(sp)+,d1-d3/a0
 		rts
+
+.fmt		dc.b	"Disk=%d Track=%d Sync=%x Length=%lx CRC16=%04x Data=%08lx%08lx%08lx%08lx",10,0
+	EVEN
 
 _ReadTrack:
 		; D0.w=tracknumber
@@ -569,6 +603,7 @@ _SaveDiskImage:	; stores a diskimage from memory to hd
 		rts
 
 _GetDiskName:	lea	_DInum(pc),a0
+		moveq	#0,d0
 		move.w	xx_CurrentDisk(pc),d0
 		divu	#10,d0
 		beq	.1
@@ -1056,7 +1091,6 @@ _TestCRC:	; compares the CRC values of the CRClist with the tracks.
 		tst.l	d0
 		bne.b	.error
 		bsr	_TrackCRC16
-		bsr	OutputDebug
 		cmp.w	crc_Checksum(a0),d0
 		bne.b	.csum
 		addq.l	#crc_SIZEOF,a0
@@ -1074,3 +1108,4 @@ _TestCRC:	; compares the CRC values of the CRClist with the tracks.
 		movem.l	(sp)+,d1-d7/a0-a6
 		moveq	#IERR_CRCFAIL,d0
 		rts
+

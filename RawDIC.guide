@@ -1,12 +1,13 @@
 @database RawDIC
-$VER: RawDIC_Guide 4.6
-$Id: RawDIC.guide 1.16 2008/07/31 07:47:58 wepl Exp wepl $
-@node main "RawDIC documentation (2.11.2006)"
+$VER: RawDIC_Guide 5.0
+$Id: RawDIC.guide 1.17 2017/11/09 00:39:26 wepl Exp wepl $
+@node main "RawDIC documentation (21.10.2017)"
 
-			   @{b}RawDIC V4.6@{ub}
+			   @{b}RawDIC V5.0@{ub}
 
 		      © 1999 by John Selck
 	  © 2002-2006 by Codetapper/Wepl/JOTD/Psygore
+		      © 2017 by Wepl
 
 			@{" Disclaimer    " link disclaimer}
 			@{" About         " link about}
@@ -117,8 +118,9 @@ the slave header and is built up like this:
 	APTR	slv_FirstDisk
 	APTR	slv_Text
 
-slv_Version:	The version of the ISlave-header structure, since only V1.?
-		of RawDIC exists, slv_Version also is 1.
+slv_Version:	The version of the ISlave-header structure, starting RawDIC v5.0
+		this can be used to request a minimum version of RawDIC, if set to 5
+		at least RawDIC v5.0 is required to execute this Slave
 
 slv_Flags:	The global flags for the ISlave. Currently only @{"SFLG_DEBUG" link flags}
 		is defined to enable RawDIC's debug output.
@@ -162,7 +164,7 @@ dsk_Version must be at least set to 2.
 dsk_NextDisk:	Pointer to the next Disk-structure or 0 when this is the last
 		disk.
 
-dsk_Version:	Version number of the Disk-structure, currently only 1 is
+dsk_Version:	Version number of the Disk-structure, currently 1 or 2 is
 		supported.
 
 dsk_Flags:	@{"Flags" link flags} for the disk.
@@ -499,6 +501,13 @@ rawdic_Print:
 	A0.l = CPTR format string
 	A1.l = APTR arg array
 
+rawdic_SetSync:
+
+	sets a new wordsync value for the actual tracklist (v5.0)
+	all registers are preserved
+	requires that slave version >= 5
+
+	D0.w = WORD sync
 
 @endnode
 @node code "ISlave code"
@@ -536,6 +545,9 @@ Both have the same register configuration when called and on exit:
 
 	=> D0.l=errorcode
 
+Starting RawDIC version 5.0 on dsk_DiskCode additionally a pointer to the
+loaded disk image will be provided in register A1. You must set the ISlave
+version to at least 5 to get this pointer.
 
 
 Using RawDIC's library functions (example):
@@ -625,9 +637,12 @@ IERR_INP_INCOMP	The format of the track in the input file is incompatible
 		archive may store track 40 as a Dos track but the ISlave
 		is trying to use a custom MFM decoding routine.
 
+IERR_SLAVEVERSION Happens if you call a RawDIC function which requires a
+		higher Slave version. Check the docs and set the Slave
+		version to the RawDIC version which has introduced the
+		function to use.
 
 All other defined errorcodes are for internal use in RawDIC only.
-
 
 
 Behaviour on errors:
@@ -752,6 +767,14 @@ WWarp:		A disk imaging format written by Wepl which stores tracks
 
 @endnode
 @node history "History"
+
+5.0	Released on 08.11.2017
+	(Wepl) new function rawdic_SetSync to set a new wordsync during disk processing
+	(Wepl) slave version can be used to request newer RawDIC
+	(Wepl) issues #2924 and #2925 fixed, see bug tracker
+	(Wepl) dsk_DiskCode provides pointer to loaded disk image in A1
+	(Wepl) on errors RawDIC no longer quits, instead the current disk can be retried
+	(Wepl) debug output improved, includes sync, tracklength, trackdata
 
 4.6	Released on 31.07.2008
 	(Wepl) new function rawdic_Print to simplify debugging

@@ -31,6 +31,11 @@
 ;			 closing aslreq added
 ;		07.09.06 Psygore
 ;			 copy io_Data buffer from chipmem to fastmem (TD_RAWREAD)
+;		21.10.17 Wepl
+;			 slave version matches rawdic version
+;		08.11.17 Wepl
+;			 Debug function reworked
+;			 some code cleanup
 ; Copyright:	Public Domain
 ; Language:	68000 Assembler
 ; Translator:	Barfly
@@ -70,7 +75,7 @@ Start:
 		jsr	_LVOOpenLibrary(a6)
 		lea	twbase(pc),a1
 		move.l	d0,(a1)
-		beq	.noasl			;without trackwarp we dont need asl
+		beq	.noasl			;without trackwarp we don't need asl
 
 		moveq	#36,d0
 		lea	aslname(pc),a1
@@ -339,19 +344,15 @@ OpenMainWindow:
 		bsr	OffButton
 
 		move.l	ButtonSelectFile(pc),a0		; Center the Select button
-		move.w	wininnerxsize(pc),d0	; Added by Codetapper
+		move.w	wininnerxsize(pc),d0		; Added by Codetapper
 		sub.w	bt_gg_OFFS+gg_Width(a0),d0
 		asr.w	#1,d0
 		move.w	d0,bt_gg_OFFS+gg_LeftEdge(a0)
 
-		move.l	aslbase(pc),d0		;If asl or twarplib not found
-		beq	.noselect		;disable the Select button
-		move.l	twbase(pc),d0
-		bne	.selectok
-
-.noselect	move.l	ButtonSelectFile(pc),a0
+		move.l	aslbase(pc),d0			;If asl or twarplib not found
+		bne	.selectok			;disable the Select button
+		move.l	ButtonSelectFile(pc),a0
 		bsr	OffButton
-
 .selectok
 
 	; initialise progress bars
@@ -682,15 +683,6 @@ DefaultSource:	dc.b	"DF0:",0
 ;		dc.b	FPF_ROMFONT
 		cnop	0,2
 
-Txt1InvalidSlave:	; displays "Invalid slave!"
-		lea	Txt1_IS(pc),a0
-		bra	DisplayText
-Txt1Cancelled:
-		lea	Txt1_C(pc),a0
-		bra	DisplayText
-Txt1Finished:
-		lea	Txt1_F(pc),a0
-		bra	DisplayText
 Txt1ReadingTrack:	; displays "Reading track ???."
 		; D0.w=tracknumber (0-65535)
 		movem.l	d0-d1/a0-a1,-(sp)
@@ -800,6 +792,7 @@ Txt1_NOWFILE:		dc.b	"Unable to write file: IoErr %d",0
 Txt1_UEC:		dc.b	"Unknown error code: %d",0
 Txt1_UECT:		dc.b	"Unknown error on track %d",0
 Txt1_NOFUNCTION:	dc.b	"Illegal RawDIC function call!",0
+Txt1_SLAVEVERSION:	dc.b	"RawDIC function call requires higher slave version!",0
 Txt1_CRCFAIL:		dc.b	"Unknown disk version!",0
 Txt1_NOTRACK:		dc.b	"Track %d not in TrackList!",0
 Txt1_TRACKLIST:		dc.b	"TrackList invalid!",0
@@ -807,7 +800,7 @@ Txt1_OUTOFMEM:		dc.b	"Out of memory!",0
 Txt1_NODISK:		dc.b	"No disk in drive!",0
 Txt1_DISKRANGE:		dc.b	"File exceeds diskimage!",0
 Txt1_DSKVERSION:	dc.b	"Unknown disk structure version!",0
-Txt1_VERSION:		dc.b	"Unknown slave version!",0
+Txt1_VERSION:		dc.b	"This slave requires a newer RawDIC version!",0
 Txt1_FLAGS:		dc.b	"Undefined flags set!",0
 Txt1_IS:		dc.b	"Invalid slave!",0
 Txt1_InsDskNum		dc.b	"Insert disk %d and press Start.",0
@@ -992,25 +985,14 @@ OnButton:	; enables a button
 
 		; A0=Button
 
-		movem.l	d0-d7/a0-a6,-(sp)
-		lea	bt_gg_OFFS+gg_Flags(a0),a2
-		move.w	#GFLG_DISABLED,d0
-		not.w	d0
-		and.w	(a2),d0
-		move.w	d0,(a2)
-		movem.l	(sp)+,d0-d7/a0-a6
+		and.w	#~GFLG_DISABLED,(bt_gg_OFFS+gg_Flags,a0)
 		rts
 
 OffButton:	; disables a button
 
 		; A0=Button
 
-		movem.l	d0-d7/a0-a6,-(sp)
-		lea	bt_gg_OFFS+gg_Flags(a0),a2
-		move.w	#GFLG_DISABLED,d0
-		or.w	(a2),d0
-		move.w	d0,(a2)
-		movem.l	(sp)+,d0-d7/a0-a6
+		or.w	#GFLG_DISABLED,(bt_gg_OFFS+gg_Flags,a0)
 		rts
 
 NewProgressBar:	; Create a new ProgressBar
@@ -1620,28 +1602,21 @@ ParseSource:	moveq	#-1,d1
 		move.l	d1,(a0)
 		rts
 
-OutputDebugCRC	bsr	_TrackCRC16
-OutputDebug:
-		movem.l	d0-d2/a0-a1/a6,-(sp)
+; output formatted debug message if debug is enabled
+; A0 = format string
+; A7 = arguments
+; all registers preserved
 
-		move.l	xx_Debug(pc),d1
-		beq.b	.s0
-
-		move.w	d0,-(a7)
-		move.w	xx_CurrentTrack(pc),-(a7)
-		bsr	_GetDiskName
-		pea	_DIname
-		lea	.fmt,a0
-		move.l	a0,d1
-		move.l	a7,d2
+Debug		movem.l	d0-d2/a0-a1/a6,-(sp)
+		move.l	xx_Debug,d1
+		beq	.end
+		move.l	a0,d1			;format string
+		lea	(4+_MOVEMBYTES,a7),a0
+		move.l	a0,d2			;args
 		move.l	dosbase,a6
 		jsr	(_LVOVPrintf,a6)
-		add.w	#8,a7
-
-.s0		movem.l	(sp)+,_MOVEMREGS
+.end		movem.l	(sp)+,_MOVEMREGS
 		rts
-
-.fmt		dc.b	"%s Track.%d CRC16.%04x Error.%d",10,0
 
 txt2_noslv:	dc.b	"Could not open slave!",10,0
 txt2_nowin:	dc.b	"Could not open Window!",10,0
@@ -1649,7 +1624,7 @@ txt2_noport:	dc.b	"Could not open Message Port!",10,0
 txt2_nodev:	dc.b	"Could not open trackdisk.device!",10,0
 rawdicInfo:	sprintx	"RawDIC V%ld.%ld ",Version,Revision
 		INCBIN	"T:date"
-		dc.b	" ©1999 by John Selck, ©2002-2006 by Codetapper/Wepl/JOTD/Psygore",10,0
+		dc.b	" ©1999 by John Selck, ©2002-2017 by Codetapper/Wepl/JOTD/Psygore",10,0
 _template	dc.b	"Slave,Retries/K/N,Source/K,Input/K,IgnoreErrors/S,Debug/S",0
 		cnop	0,2
 
@@ -1662,24 +1637,6 @@ WriteStdOut:
 		jsr	(_LVOPutStr,a6)
 		move.l	(a7)+,a6
 		rts
-
-; JOTD: activate it for traces within code
-	IFEQ	1
-DEBUG_MESSAGE:MACRO
-	movem.l	d0-d1/a0-a1,-(a7)
-	lea	.msg\@(pc),a0
-	bsr	WriteStdOut
-	movem.l	(a7)+,d0-d1/a0-a1
-	bra.b	.sk\@
-.msg\@
-	dc.b	"\1",10,0
-	even
-.sk\@
-	ENDM
-	ELSE
-DEBUG_MESSAGE:MACRO
-	ENDM
-	ENDC
 
 CODE2MSG:MACRO
 	cmp.b	#IERR_\1,d0
