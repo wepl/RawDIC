@@ -51,6 +51,7 @@
 ;		28.05.22 debug output when switching struct because crc-list
 ;		06.06.22 fix reverse tracklists
 ;			 don't retry if reading from warp-file
+;		17.04.23 fix last track detection with DOUBLEINC
 ;  :Requires.	OS V37+, MC68000+
 ;  :Copyright.	?
 ;  :Language.	68000 Assembler
@@ -59,7 +60,7 @@
 ;---------------------------------------------------------------------------*
 
 Version		= 6
-Revision	= 0
+Revision	= 1
 
 	; the IMSG tags are used to define certain signals in the program
 	; i.e. a pressed button or a failure while reading a track
@@ -482,13 +483,20 @@ ReadDisk:
 		addq.w	#1,(a0)
 		lea	xx_CurrentTrack(pc),a0
 		move	(a0),d0
-		cmp	(xx_LastTrack,pc),d0
-		beq	.next
-		add	(xx_TrackInc,pc),d0
+		move	(xx_TrackInc,pc),d1
+		add	d1,d0
 		move	d0,(a0)
-		bra	.l1
-.out
-		move.w	xx_NumTracks(pc),d0
+		tst	d1
+		bmi	.dec
+		cmp	(xx_LastTrack,pc),d0
+		ble	.l1
+		bra	.next
+
+.dec		cmp	(xx_LastTrack,pc),d0
+		bge	.l1
+		bra	.next
+
+.out		move.w	xx_NumTracks(pc),d0
 		move.l	PrBar0(pc),a0
 		move.l	winptr(pc),a1
 		bsr	RefreshProgressBar
